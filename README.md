@@ -2,7 +2,7 @@
 
 > **0 人声 · 原生 2K@60fps 的 Vibe 知识大赏类短视频生产框架**（Remotion + Python + FFmpeg）
 
-**MakeYourVideo** is a production framework for silent, cinematic 9:16 explainer shorts. One `beats.json` timeline drives the whole film; Remotion handles motion and typography, Python handles beat-aligned scoring and hardware-decode acceptance. No voice-over, no subtitle band — just type, geometry, light and sound.
+**MakeYourVideo** 是一套面向 0 人声、电影感 9:16 竖屏知识短片的生产框架。单份 beats.json 时间轴驱动全片：Remotion 掌管动效与排版，Python 负责卡拍配乐与硬解验收。无人声、无字幕带——唯有字体、几何、光影与声景。
 
 ```bash
 git clone https://github.com/Heersley/MakeYourVideo.git
