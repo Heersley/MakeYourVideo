@@ -1,0 +1,58 @@
+# 依赖与构建产物
+node_modules/
+.pnpm-store/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# 渲染产物与工作区（可再生成）
+output/
+temp/
+.work/
+.remotion/
+*.mp4
+*.mov
+*.m4v
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.aac
+*.srt
+
+# 图片与字体：示例仓库只保留生成脚本，不提交产物
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.woff
+*.woff2
+*.ttf
+*.otf
+public/fonts/
+public/stone_v*.png
+assets/fonts/*.woff
+assets/fonts/*.woff2
+assets/fonts/*.ttf
+assets/bgm/*.mp3
+assets/bgm/*.m4a
+assets/bgm/*.wav
+assets/bgm/*.flac
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 本地环境与日志
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
