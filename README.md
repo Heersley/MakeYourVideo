@@ -1,25 +1,36 @@
+# MakeYourVideo
+
+> **0 人声 · 原生 2K@60fps 的 Vibe 知识大赏类短视频生产框架**（Remotion + Python + FFmpeg）
+
+**MakeYourVideo** is a production framework for silent, cinematic 9:16 explainer shorts. One `beats.json` timeline drives the whole film; Remotion handles motion and typography, Python handles beat-aligned scoring and hardware-decode acceptance. No voice-over, no subtitle band — just type, geometry, light and sound.
+
+```bash
+git clone https://github.com/Heersley/MakeYourVideo.git
+cd MakeYourVideo
+```
+
 ## 🎬 成片演示 / Showcase
 
-> **完整成片观看（Bilibili）**：👉 **[点击观看实拍成品演示](https://t.bilibili.com/1273093177771819012)**
-> *(0 人声 · 程序化 PBR 道具与微音效 · 开源书卷三件套字体 · 自动卡拍铺底混音)*
+> **完整成片观看（Bilibili）**：👉 **[点击观看成品演示](https://t.bilibili.com/1273093177771819012)**
+>
 
 <table>
   <tr>
     <td align="center" width="25%">
-      <img src="拖入01_opening.jpg后生成的链接" alt="Opening" width="100%" /><br/>
-      <sub><b>开场定场</b><br/>PBR 道具 + 书卷主次字阶</sub>
+      <img src="https://github.com/user-attachments/assets/66f49b66-60ad-4ac1-98dc-4224687b71f1" alt="Opening" width="100%" /><br/>
+      <sub><b></sub>
     </td>
     <td align="center" width="25%">
-      <img src="拖入02_xor.jpg后生成的链接" alt="Binary XOR" width="100%" /><br/>
-      <sub><b>视觉自解释</b><br/>按权值等比铜槽与异或配对</sub>
+      <img src="https://github.com/user-attachments/assets/4186d869-5c47-478c-a6d1-bd87404e9f1d" alt="Binary XOR" width="100%" /><br/>
+      <sub><b></sub>
     </td>
     <td align="center" width="25%">
-      <img src="拖入03_break.jpg后生成的链接" alt="Parity Break" width="100%" /><br/>
-      <sub><b>克制功能色</b><br/>暗赭红高亮逻辑断裂</sub>
+      <img src="https://github.com/user-attachments/assets/1705d049-9e86-40ed-b4d8-9b2256fdb22a" alt="Parity Break" width="100%" /><br/>
+      <sub><b></sub>
     </td>
     <td align="center" width="25%">
-      <img src="拖入04_grundy.jpg后生成的链接" alt="Sprague-Grundy" width="100%" /><br/>
-      <sub><b>概念可视化</b><br/>博弈图凝聚为等值石堆</sub>
+      <img src="https://github.com/user-attachments/assets/a0db95fa-26fe-4499-a9a8-6d7509739368" alt="Sprague-Grundy" width="100%" /><br/>
+      <sub><b></sub>
     </td>
   </tr>
 </table>
@@ -46,16 +57,8 @@ flowchart TB
     OUT -->|"6. 终审发布 / 根因复盘"| U
     U -.->|"仅共性根因触发基建升级"| W
     W -.->|"同步规范与工具链"| C1
-# MakeYourVideo
-
-> **0 人声 · 原生 2K@60fps 的 Vibe 知识大赏类短视频生产框架**（Remotion + Python + FFmpeg）
-
-**MakeYourVideo** is a production framework for silent, cinematic 9:16 explainer shorts. One `beats.json` timeline drives the whole film; Remotion handles motion and typography, Python handles beat-aligned scoring and hardware-decode acceptance. No voice-over, no subtitle band — just type, geometry, light and sound.
-
-```bash
-git clone https://github.com/Heersley/MakeYourVideo.git
-cd MakeYourVideo
 ```
+
 
 ---
 
@@ -63,8 +66,8 @@ cd MakeYourVideo
 
 - **0 人声**：不配音、不做逐词字幕，靠 `beats.json` 连续时间轴 + 大字 + 图形演化 + 微音效 + 配乐。
 - **原生 2K**：`1440×2560 @ 60fps`、H.264 `High@5.1`（`Level 4.2/5.0` 的宏块上限装不下 864,000 宏块/秒）。
-- **程序验收**：6 项硬指标，其中 D3D11VA 硬解对拍专门拦「电脑能播、手机灰屏」的编码事故。
-- **可复现**：仓库只有源码、依赖清单与规范；字体、配乐、成片全部不入库。
+- **程序验收**：6 项硬指标，保证生成的视频不炸钢。
+- **可复现**：仓库只有源码、依赖清单与规范，搭配智能体即可轻松复现。
 
 > `examples/nim_game/` 是一条 184 秒 / 31 幕的完整参考实现，**1080p 时代产物**：学状态机写法与验收脚本，不要把它的 `-level:v 4.2` 照抄到 2K 新片。
 
@@ -185,4 +188,4 @@ python tools/decoder_check.py --video out/nim.mp4 --output out/decoder_check.jso
 
 ## 边界
 
-这是**生产规范 + 工具链**仓库，不是成品视频仓库：不含成片、字体、配乐、QC 日志与任何个人环境配置。渲染产物、中间帧、验收 JSON 默认被 `.gitignore` 排除。
+这是**生产规范 + 工具链**仓库，不是成品视频仓库：不含成片、字体、配乐、QC 日志与任何个人环境配置。
