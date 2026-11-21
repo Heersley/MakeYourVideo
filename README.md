@@ -1,3 +1,51 @@
+## 🎬 成片演示 / Showcase
+
+> **完整成片观看（Bilibili）**：👉 **[点击观看实拍成品演示](https://t.bilibili.com/1273093177771819012)**
+> *(0 人声 · 程序化 PBR 道具与微音效 · 开源书卷三件套字体 · 自动卡拍铺底混音)*
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="拖入01_opening.jpg后生成的链接" alt="Opening" width="100%" /><br/>
+      <sub><b>开场定场</b><br/>PBR 道具 + 书卷主次字阶</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="拖入02_xor.jpg后生成的链接" alt="Binary XOR" width="100%" /><br/>
+      <sub><b>视觉自解释</b><br/>按权值等比铜槽与异或配对</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="拖入03_break.jpg后生成的链接" alt="Parity Break" width="100%" /><br/>
+      <sub><b>克制功能色</b><br/>暗赭红高亮逻辑断裂</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="拖入04_grundy.jpg后生成的链接" alt="Sprague-Grundy" width="100%" /><br/>
+      <sub><b>概念可视化</b><br/>博弈图凝聚为等值石堆</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🏗️ 多 AI 角色协作与 6 项硬验收架构
+
+```mermaid
+flowchart TB
+    U["User<br/>总导演 · 四处强制人工卡点"]
+    G["Architect LLM (e.g. Gemini)<br/>一手核查 · 隐喻自检 · 分镜与气口编排"]
+    C1["Render Agent (e.g. Codex CLI)<br/>Stage 1: 720p@30fps 带BGM快审 + 手机缩屏自检"]
+    C2["Render Agent (e.g. Codex CLI)<br/>Stage 2: 2K@60fps High@5.1 流式直出 + 6项硬验收"]
+    W["Infra Agent (e.g. WorkBuddy)<br/>规范维护 · tools/ 脚本升级 · 空间治理"]
+    OUT["唯一成品 final.mp4<br/>原生 2K@60fps · 自动铺底卡Drop · D3D11VA硬解PASS"]
+
+    U -->|"1. 拍板选题"| G
+    G -->|"2. 核查与分镜定稿"| U
+    U -->|"3. 启动单片独立会话"| C1
+    C1 -->|"4. 快审片与关键帧验收"| U
+    U -->|"5. 点头放行全片"| C2
+    C2 -->|"mix_bgm + decoder_check"| OUT
+    OUT -->|"6. 终审发布 / 根因复盘"| U
+    U -.->|"仅共性根因触发基建升级"| W
+    W -.->|"同步规范与工具链"| C1
 # MakeYourVideo
 
 > **0 人声 · 原生 2K@60fps 的 Vibe 知识大赏类短视频生产框架**（Remotion + Python + FFmpeg）
