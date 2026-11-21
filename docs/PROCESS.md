@@ -76,7 +76,7 @@
 [4] 阶段 2 · 原生 2K 全片与 6 项验收（成片工程）
     • 1440×2560 @ 60fps 流式直出（High@5.1 / yuv420p / crf 16 / preset slow / -g 120 / +faststart）
     • 定点无损抽帧（120–180 张）测 text_box_diff === 0.000 与 seam_delta
-    • tools/mix_bgm.py：前段小节铺底 + Drop 对齐 → 唯一成片 <主题>.mp4（+ src/sfx_only.wav）
+    • tools/mix_bgm.py：前段小节铺底 + Drop 对齐 + --sfx 注入微音效 → 唯一成片 <主题>.mp4（+ src/sfx_only.wav）
     • 6 项验收：编码 / 光场 / ROI 死帧+零颤动+音频断层 / 安全区与联系表 / 事实闭环 / 硬解对拍
     • 全 PASS 后清理本期 .work/
     │  ★ 卡点 4：确认交付

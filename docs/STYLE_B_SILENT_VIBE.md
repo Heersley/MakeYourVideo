@@ -146,9 +146,10 @@
 交付目录：`output/<slug>/`。**白名单 7 项**：`<主题>.mp4`、`bgm_mix_report.json`、`beats.json`、`contact_sheet.png`、`cover.png`、`facts_and_sources.md`、`src/`（含 `final_qc.json` / `reading_qc.json` / `decoder_check.json` / `sfx_only.wav`）。
 
 > 配乐与节拍档案见 `assets/bgm/README.md`；新片动笔前先读 `<track>.beats.json` 的 `bar_times` 与 `drops`，让硬切与高潮原生踩在小节上。
-> 交付命令（交付阶段）：
+> 交付命令（交付阶段，**`--sfx` 必填**：Remotion 合成不挂 `<Audio>`，微音效只能由混音阶段注入）：
 > ```bash
 > python tools/mix_bgm.py --video <渲染中间片>.mp4 \
+>   --sfx <slug>/src/sfx_mix.wav \
 >   --output "output/<slug>/<主题>.mp4" --align-climax <高潮秒数> \
 >   --sfx-out "output/<slug>/src/sfx_only.wav"
 > ```
@@ -161,8 +162,19 @@
 -c:v libx264 -profile:v high -level:v 5.1 -pix_fmt yuv420p -crf 16 -preset slow -g 120 -movflags +faststart
 ```
 
+> **怎么落到命令行**：Remotion 4.0.545 的 CLI 只暴露 `--codec / --crf / --pixel-format / --color-space / --x264-preset`，
+> **没有** `--level` 与 `--x264-params`。因此 `-level:v 5.1` 与 `-g 120` **无法靠封装改写**——
+> `-c:v copy` 只搬运码流、不改 H.264 编码级别，必须真正重编码一次：
+>
+> ```bash
+> ffmpeg -i out/raw.mp4 -c:v libx264 -profile:v high -level:v 5.1 \
+>   -pix_fmt yuv420p -crf 16 -preset slow -g 120 -movflags +faststart out/final_video.mp4
+> ```
+>
+> 另需 `--color-space=bt709`（`package.json` 的 `render:example` 已内置），否则 Remotion 默认输出 full-range `yuvj420p`，
+> 不满足下面这条 `-pix_fmt yuv420p` 的兼容基线。
 - **为什么必须是 `Level 5.1`**：`1440×2560` = `90×160 = 14,400` 宏块/帧；@60fps 即 **`864,000` 宏块/秒**。`Level 4.2` 上限 `522,240`（超规 65%），`Level 5.0` 上限 `589,824`（仍超规 46%），只有 `Level 5.1`（`983,040`）合法。写 4.2 / 5.0 会让严格解码器拒解或花屏。
-- `-g 120` = 2 秒 GOP；**禁 `-g 1` / `keyint=1` 全 I 帧**，禁在 `-x264-params` 里塞结构性 Hack。
+- `-g 120` = 2 秒 GOP；**禁 `-g 1` / `keyint=1` 全 I 帧**，禁在 x264 参数里塞结构性 Hack（Remotion CLI 无 `--x264-params` 入口，此处指 ffmpeg 后处理阶段）。
 - **绝对禁止**：`slice-max-mbs` 微分片、`slices=NN` 多片、全 I 帧、「按宏块对齐复制阅读窗像素」补丁。它们会让 **D3D11VA 把半屏解成 RGB(129,129,129) 纯灰块**——这是本规范 §5.6 存在的唯一理由。
 - **体积自查**：标准档（`105–125s` / 2K / `crf 16`）约 **`18–65 MB`**（`0.006–0.02` bpp）。突然大一个数量级（>0.15 bpp）先怀疑编码 Hack。
 - **音频**：终混 = 微音效 + 配乐，`AAC 256k / 48kHz stereo`；真峰值 `≤-1.0 dBTP`、集成 `-14~-18 LUFS`；**禁 `-an`**。

@@ -4,7 +4,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import subprocess
 from fractions import Fraction
 from pathlib import Path
@@ -12,11 +11,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from bounds import inspect_layout, reading_bounds, reading_frames
+from bounds import PROJECT, inspect_layout, locate_ffmpeg, reading_bounds, reading_frames
 
 SOURCE = Path(__file__).resolve().parent
 EPISODE = SOURCE.parent
-PROJECT = EPISODE.parents[3]
 REVIEW = EPISODE / "review"
 FPS, COUNT = 30, 1044
 WIDTH, HEIGHT = 540, 960
@@ -44,9 +42,27 @@ def verify_locked_sources():
 
 
 def pinned_tools():
-    packages = Path(os.environ["LOCALAPPDATA"]) / "Microsoft/WinGet/Packages"
-    ffmpeg = next(packages.glob("Gyan.FFmpeg_*/ffmpeg-9.0.2-full_build/bin/ffmpeg.exe"))
-    return ffmpeg, ffmpeg.with_name("ffprobe.exe")
+    """跨平台定位 ffmpeg/ffprobe（FFMPEG_BIN → WinGet → PATH），不再硬编码 WinGet 路径。"""
+    return locate_ffmpeg()
+
+
+def contact_sheet_font(size=15):
+    """等宽字体：逐个候选尝试，全部失败时安全回落到 Pillow 内置位图字体。"""
+    candidates = (
+        "C:/Windows/Fonts/consola.ttf",
+        "/System/Library/Fonts/Menlo.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+    )
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except (OSError, ValueError):
+            continue
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:
+        return ImageFont.load_default()
 
 
 def frame_number(seconds, fps=FPS):
@@ -226,7 +242,7 @@ def make_contact_sheet(path, files, samples):
         "#101114",
     )
     draw = ImageDraw.Draw(sheet)
-    font = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", 15)
+    font = contact_sheet_font(15)
     for index, sample in enumerate(samples):
         x = margin + index % columns * (width + margin)
         y = margin + index // columns * (height + caption + margin)

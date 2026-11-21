@@ -1,10 +1,16 @@
 """Read native design bounds and actual glyph fonts without taking screenshots."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import math
+import os
+import platform
 import re
+import shutil
 import subprocess
+import sys
 from bisect import bisect_right
 from contextlib import contextmanager
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -16,7 +22,101 @@ from playwright.sync_api import sync_playwright
 
 SOURCE = Path(__file__).resolve().parent
 EPISODE = SOURCE.parent
-PROJECT = EPISODE.parents[3]
+
+
+def _find_repo_root(start: Path) -> Path:
+    """向上定位仓库根（含 package.json 的那一级），不依赖固定的目录层级深度。"""
+    for parent in start.parents:
+        if (parent / "package.json").exists():
+            return parent
+    return start.parents[-1] if start.parents else start
+
+
+PROJECT = _find_repo_root(EPISODE)
+EXE = ".exe" if platform.system() == "Windows" else ""
+
+# 字体目录候选：渲染侧标准路径（public/fonts）优先，其次仓库归档与 QC 历史路径。
+FONT_DIRS = (
+    PROJECT / "public" / "fonts",
+    PROJECT / "assets" / "fonts",
+    SOURCE / "assets" / "fonts",
+)
+
+
+def font_file(name: str) -> Path | None:
+    """按候选顺序定位字体文件；找不到返回 None。"""
+    for directory in FONT_DIRS:
+        candidate = directory / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def locate_ffmpeg(explicit: str | None = None):
+    """跨平台定位 ffmpeg / ffprobe：显式参数 → FFMPEG_BIN → WinGet → PATH。"""
+    tools = PROJECT / "tools"
+    if tools.is_dir() and str(tools) not in sys.path:
+        sys.path.insert(0, str(tools))
+    try:
+        import bgm_common  # noqa: WPS433 — 延迟导入，避免与 tools/ 缺失时硬崩
+        ffmpeg, ffprobe, _ = bgm_common.locate_tools(explicit)
+        return ffmpeg, ffprobe
+    except (Exception, SystemExit):
+        pass
+
+    candidates = []
+    if explicit:
+        candidates.append(Path(explicit))
+    if os.environ.get("FFMPEG_BIN"):
+        candidates.append(Path(os.environ["FFMPEG_BIN"]))
+    which = shutil.which("ffmpeg")
+    if which:
+        candidates.append(Path(which))
+    for candidate in candidates:
+        exe = candidate if candidate.suffix.lower() == ".exe" else candidate / f"ffmpeg{EXE}"
+        if not exe.exists():
+            continue
+        probe = exe.with_name(f"ffprobe{EXE}")
+        return str(exe), str(probe if probe.exists() else shutil.which("ffprobe") or probe)
+    raise SystemExit(
+        "[layout] 未找到 FFmpeg。请用 --ffmpeg 指定可执行文件，"
+        "或设置环境变量 FFMPEG_BIN，或确认 `ffmpeg -version` 可用。"
+    )
+
+
+def find_esbuild() -> Path | None:
+    """跨平台定位 esbuild：优先平台包 @esbuild/<platform>，其次 node_modules/.bin。"""
+    platform_dir = PROJECT / "node_modules" / "@esbuild"
+    if platform_dir.is_dir():
+        for candidate in sorted(platform_dir.glob(f"*/esbuild{EXE}")):
+            if candidate.is_file():
+                return candidate
+    for name in (f"esbuild{EXE}", "esbuild"):
+        candidate = PROJECT / "node_modules" / ".bin" / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def find_headless_shell() -> Path | None:
+    """定位 Remotion 自带的 chrome-headless-shell（跨平台，不写死 .exe）。"""
+    root = PROJECT / "node_modules" / ".remotion" / "chrome-headless-shell"
+    if not root.is_dir():
+        return None
+    for candidate in root.rglob(f"chrome-headless-shell{EXE}"):
+        return candidate
+    for candidate in root.rglob("chrome-headless-shell*"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def launch_chromium(playwright):
+    """优先用 Remotion 的 headless shell；缺失时回落到 Playwright 自带 Chromium。"""
+    shell = find_headless_shell()
+    if shell is not None:
+        return playwright.chromium.launch(executable_path=str(shell))
+    return playwright.chromium.launch()
 TEXT_SAFE_AREA = (90, 180, 910, 1500)
 PREVIEW_END = 1044
 CHINESE = "ChillJinshuSong"
@@ -57,22 +157,35 @@ class LayoutHandler(SimpleHTTPRequestHandler):
         pass
 
     def translate_path(self, path):
-        if path.startswith("/assets/"):
-            self.directory = str(SOURCE / "assets")
-            return super().translate_path(path.removeprefix("/assets"))
-        self.directory = str(self.server.work)
-        return super().translate_path(path)
+        # 直接返回绝对路径，避免在 ThreadingHTTPServer 下改写共享的 self.directory。
+        clean = path.split("?", 1)[0].split("#", 1)[0]
+        if clean.startswith("/assets/fonts/"):
+            # 字体按 FONT_DIRS 顺序解析：开源用户只放到 public/fonts 也能被 QC 读到。
+            target = font_file(Path(clean).name)
+            if target is not None:
+                return str(target)
+        if clean.startswith("/assets/"):
+            return str(SOURCE / "assets" / clean[len("/assets/"):])
+        return str(Path(self.server.work) / clean.lstrip("/"))
 
 
 @contextmanager
 def serve_layout(work):
     work.mkdir(parents=True, exist_ok=True)
     bundle = work / "preview_layout.js"
+    esbuild = find_esbuild()
+    if esbuild is None:
+        raise SystemExit(
+            "[layout] 未找到 esbuild。请先在仓库根目录执行 npm install。"
+        )
     subprocess.run(
         [
-            PROJECT / "node_modules/@esbuild/win32-x64/esbuild.exe",
-            SOURCE / "preview_layout.tsx",
-            "--bundle", "--log-level=error", '--define:process.env.NODE_ENV="production"',
+            str(esbuild),
+            str(SOURCE / "preview_layout.tsx"),
+            "--bundle",
+            # 自动 JSX 运行时：与 Remotion 自带打包器一致，无需每个 .tsx 都 import React
+            "--jsx=automatic",
+            "--log-level=error", '--define:process.env.NODE_ENV="production"',
             f"--outfile={bundle}",
         ],
         check=True,
@@ -143,9 +256,14 @@ def read_faces(page, session):
     for face in faces:
         src = face["source"]
         if src and Path(src).name == src:
-            with TTFont(SOURCE / "assets" / "fonts" / src, lazy=True) as font:
-                face["postScriptName"] = font["name"].getDebugName(6)
-                face["fileWeight"] = font["OS/2"].usWeightClass
+            target = font_file(src)
+            if target is None:
+                face["postScriptName"] = None
+                face["fileWeight"] = None
+            else:
+                with TTFont(target, lazy=True) as font:
+                    face["postScriptName"] = font["name"].getDebugName(6)
+                    face["fileWeight"] = font["OS/2"].usWeightClass
         face["platformFonts"] = platform_fonts(
             session, root, f'[data-font-probe="{face["family"]}-{face["weight"]}"]',
         )
@@ -385,9 +503,8 @@ def inspect_key_details(page, score):
 
 
 def inspect_keyframe_layout(work, score):
-    browser_path = next((PROJECT / "node_modules/.remotion/chrome-headless-shell").rglob("chrome-headless-shell.exe"))
     with serve_layout(work) as address, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=str(browser_path))
+        browser = launch_chromium(playwright)
         page = browser.new_page(viewport={"width": 1080, "height": 1920})
         page.goto(address, wait_until="load")
         sample_layout(page, 0, 1, 60)
@@ -411,10 +528,9 @@ def inspect_keyframe_layout(work, score):
 
 
 def inspect_layout(work, beats):
-    browser_path = next((PROJECT / "node_modules/.remotion/chrome-headless-shell").rglob("chrome-headless-shell.exe"))
     b25 = next(beat for beat in beats if beat["id"] == 25)
     with serve_layout(work) as address, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=str(browser_path))
+        browser = launch_chromium(playwright)
         page = browser.new_page(viewport={"width": 1080, "height": 1920})
         page.goto(address, wait_until="load")
         sample_layout(page, 0, 1, 60)
@@ -497,10 +613,9 @@ def inspect_full_layout(work, beats):
         inspect.update((max(0, begin - 1), begin))
     inspect.update(reading)
     requested = sorted(inspect)
-    browser_path = next((PROJECT / "node_modules/.remotion/chrome-headless-shell").rglob("chrome-headless-shell.exe"))
     stable_labels, rows, fonts = {}, [], []
     with serve_layout(work) as address, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=str(browser_path))
+        browser = launch_chromium(playwright)
         page = browser.new_page(viewport={"width": 1080, "height": 1920})
         page.goto(address, wait_until="load")
         sample_layout(page, 0, 1, 60)

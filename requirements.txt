@@ -12,4 +12,5 @@ scipy>=1.11         # examples/.../gen_sfx.py（Butterworth 滤波）
 # 仅示例工程的版面检查脚本需要（bounds.py / full_qc.py）：
 #   pip install playwright && playwright install chromium
 fonttools>=4.50
+brotli>=1.1         # fontTools 解码 .woff2 的必需扩展（bounds.py 读字体时用）
 playwright>=1.45

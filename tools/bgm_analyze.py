@@ -376,7 +376,7 @@ def analyze(audio_path, out_json=None, ffmpeg=None, print_summary=True) -> dict:
             "drop_head_skip_sec": DROP_HEAD_SKIP_SEC,
             "drop_baseline_floor_ratio": DROP_BASELINE_FLOOR_RATIO,
             "ffmpeg": ver,
-            "tool": "TOOL/bgm_analyze.py",
+            "tool": "tools/bgm_analyze.py",
         },
     }
     out.parent.mkdir(parents=True, exist_ok=True)

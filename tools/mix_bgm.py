@@ -3,12 +3,18 @@
 用法（交付阶段 · 单成片）：
   python tools/mix_bgm.py --video out/<中间片>.mp4 \
       --bgm assets/bgm/<track>.m4a \
+      --sfx examples/nim_game/src/sfx_mix.wav \
       --output "output/<slug>/<主题>.mp4" \
       --align-climax 122.0 --sfx-out "output/<slug>/src/sfx_only.wav"
 
 用法（阶段 1 快审片 · 带 BGM 合成 30 秒）：
   python tools/mix_bgm.py --video out/<stage1>.mp4 \
       --preview-duration 30 --align-climax 122.0 --output out/<stage1>_bgm.mp4
+
+微音效轨来源（优先级从高到低）：
+  1. `--sfx <wav>`：显式指定微音效母带，按输入视频实际时长裁剪/补零对齐；
+  2. 输入视频自带音轨：直接从渲染中间片无损提取；
+  3. 都没有：按静音基线处理（`--sfx-out` 会同时给出近似静音的 warning）。
 
 不传 --bgm 时自动锁定 assets/bgm/bgm.* 与其 .beats.json；
 节拍档案缺失会先自动跑一次 bgm_analyze.py；音频未放入则打印路径并报错退出。
@@ -196,32 +202,32 @@ def pick_fill_segment(loop: np.ndarray, bar_samples: int, target_samples: int,
                       prefer_bars: int = 0, drops=()) -> dict:
     """从同曲里挑一段整数小节的「最低能量」乐段，用于前段铺底。
 
-    约束：
-      - 长度必须是整数小节（4 / 8 / 16 bars，可用 --fill-bars 指定）；
-        默认按前段长度自适应：≥34s 用 16 小节、≥17s 用 8 小节、否则 4 小节
-        （越长循环次数越少，长片前段不会听出机械重复）；
+    约束（按优先级从严到宽逐级放宽，任何放宽都会在 stderr 打印 warning）：
+      - 长度必须是整数小节；默认按前段长度自适应：≥34s 用 16 小节、≥17s 用 8 小节、
+        否则 4 小节（越长循环次数越少，长片前段不会听出机械重复）；
+      - 候选小节数按 [16, 8, 4, 2] 依次降档，并夹紧到「连续可用小节最长段」
+        `max_usable_run`，避免短曲（如 35s 测试曲）在 offset 很大时直接退出；
       - 必须完整位于 loop 内；
-      - **排除**：曲尾 8 小节（淡出/尾奏，循环起来像在渐弱）、Drop 前后各 2 小节
-        （上升段/落点，铺底会抢高潮）、以及能量低于中位数 10dB 的近静音小节；
+      - 严格档排除：曲尾 8 小节（淡出/尾奏，循环起来像在渐弱）、Drop 前后各 2 小节
+        （上升段/落点，铺底会抢高潮）、能量低于中位数 10dB 的近静音小节；
       - 以「每小节 RMS」做滑窗，取能量最低的合规窗口。
     """
     total_bars = len(loop) // bar_samples
-    if total_bars < 4:
-        raise SystemExit(f"[fill] 曲目可用小节数不足（{total_bars} < 4），无法铺底。")
+    if total_bars < 2:
+        raise SystemExit(
+            f"[fill] 曲目可用小节数不足（{total_bars} < 2），无法铺底；"
+            "请改用更长的配乐，或调小 --align-climax。")
 
     bar_sec = bar_samples / SR
     need_sec = target_samples / SR
     if prefer_bars:
-        bars = int(prefer_bars)
+        ladder = [max(1, int(prefer_bars))]
     elif need_sec >= 34.0:
-        bars = 16
+        ladder = [16, 8, 4, 2]
     elif need_sec >= 17.0:
-        bars = 8
+        ladder = [8, 4, 2]
     else:
-        bars = 4
-    bars = min(bars, total_bars)
-    if bars < 4:
-        raise SystemExit(f"[fill] --fill-bars 超出可用范围（4–{total_bars}）。")
+        ladder = [4, 2]
 
     # 每小节 RMS
     bar_db = np.asarray(
@@ -229,31 +235,71 @@ def pick_fill_segment(loop: np.ndarray, bar_samples: int, target_samples: int,
         dtype=np.float64)
     med = float(np.median(bar_db))
 
-    bad = np.zeros(total_bars, dtype=bool)
-    bad[max(0, total_bars - 8):] = True                      # 曲尾淡出段
-    for d in drops or ():
-        bi = int(round(float(d) / bar_sec))
-        bad[max(0, bi - 2):min(total_bars, bi + 3)] = True    # Drop 前后各 2 小节
-    bad |= (bar_db < med - 10.0)                             # 近静音小节
+    def build_mask(tail_bars: int, drop_pad: int, silent_filter: bool) -> np.ndarray:
+        bad = np.zeros(total_bars, dtype=bool)
+        if tail_bars > 0:
+            bad[max(0, total_bars - tail_bars):] = True
+        for d in drops or ():
+            bi = int(round(float(d) / bar_sec))
+            bad[max(0, bi - drop_pad):min(total_bars, bi + drop_pad + 1)] = True
+        if silent_filter:
+            bad |= (bar_db < med - 10.0)
+        return bad
 
-    best = None
-    for i in range(total_bars - bars + 1):
-        if bad[i:i + bars].any():
-            continue
-        score = float(bar_db[i:i + bars].mean())
-        if best is None or score < best["score"]:
-            best = {"bars": bars, "start_bar": i, "score": score}
-    if best is None:                                         # 全被排除时退化为只避开曲尾
-        relaxed = np.zeros(total_bars, dtype=bool)
-        relaxed[max(0, total_bars - 8):] = True
+    def longest_run(mask: np.ndarray) -> int:
+        best = run = 0
+        for flag in mask:
+            run = 0 if flag else run + 1
+            if run > best:
+                best = run
+        return best
+
+    def search(mask: np.ndarray, bars: int):
+        best = None
         for i in range(total_bars - bars + 1):
-            if relaxed[i:i + bars].any():
+            if mask[i:i + bars].any():
                 continue
             score = float(bar_db[i:i + bars].mean())
             if best is None or score < best["score"]:
                 best = {"bars": bars, "start_bar": i, "score": score}
+        return best
+
+    # 从严到宽：严格 → 取消近静音过滤 → 收窄曲尾/Drop 保护 → 任意窗口
+    strategies = (
+        ("strict", build_mask(8, 2, True)),
+        ("no_silent_filter", build_mask(8, 2, False)),
+        ("relaxed_tail_drop", build_mask(min(8, max(1, total_bars // 4)), 1, False)),
+        ("any_window", np.zeros(total_bars, dtype=bool)),
+    )
+
+    best = None
+    used_strategy = ""
+    usable = 0
+    for name, mask in strategies:
+        usable = longest_run(mask)
+        for bars in ladder:
+            if bars > usable:
+                continue
+            found = search(mask, bars)
+            if found is not None:
+                best = found
+                used_strategy = name
+                break
+        if best is not None:
+            break
+
     if best is None:
-        raise SystemExit("[fill] 未找到可用铺底乐段。")
+        raise SystemExit(
+            f"[fill] 未找到可用铺底乐段（共 {total_bars} 小节，最长连续可用 {usable}）。")
+
+    degraded = used_strategy != "strict" or best["bars"] != ladder[0]
+    if degraded:
+        print(
+            f"[fill][warn] 铺底降档：策略 {used_strategy} / {best['bars']} 小节"
+            f"（曲目共 {total_bars} 小节，最长连续可用 {usable}；"
+            f"目标 {need_sec:.1f}s 前段）。保护边距已按可用长度放宽。",
+            file=sys.stderr,
+        )
 
     start = best["start_bar"] * bar_samples
     seg = loop[start:start + best["bars"] * bar_samples].copy()
@@ -263,6 +309,9 @@ def pick_fill_segment(loop: np.ndarray, bar_samples: int, target_samples: int,
         "start_sec": start / SR,
         "bar_rms_dbfs": round(best["score"], 2),
         "target_samples": target_samples,
+        "max_usable_run": usable,
+        "strategy": used_strategy,
+        "degraded": degraded,
     }
 
 
@@ -336,6 +385,9 @@ def fill_preroll(track: np.ndarray, loop: np.ndarray, offset_samples: int,
         "enabled": True,
         "reason": "align_climax 晚于曲目 Drop，正偏移前段禁止留白",
         "fill_bars": pick["bars"],
+        "degraded": pick.get("degraded", False),
+        "strategy": pick.get("strategy"),
+        "max_usable_run": pick.get("max_usable_run"),
         "segment_start_sec": round(pick["start_sec"], 3),
         "segment_rms_dbfs": pick["bar_rms_dbfs"],
         "climax_rms_dbfs": round(climax_rms, 2),
@@ -582,6 +634,9 @@ def main(argv=None):
                    help="输出 mp4（交付阶段直接写 <主题>.mp4）")
     p.add_argument("--preview-duration", type=float, default=None,
                    help="只混前 N 秒（阶段 1 快审片带 BGM）")
+    p.add_argument("--sfx", default=None,
+                   help="微音效母带 WAV（如 examples/nim_game/src/sfx_mix.wav）；"
+                        "传入则按视频时长裁剪对齐后混入，不再依赖输入视频自带音轨")
     p.add_argument("--sfx-out", default=None,
                    help="导出轻量纯微音效母带（如 src/sfx_only.wav）")
     p.add_argument("--sfx-sr", type=int, default=32000, help="sfx_only.wav 采样率（默认 32000）")
@@ -648,12 +703,24 @@ def main(argv=None):
 
     # --- 2. 解码双轨 ---
     bgm_pcm = decode_f32(ff, bgm, sr=SR, channels=2)
-    if has_audio_stream(probe, str(video)):
+    sfx_source = None
+    if a.sfx:
+        sfx_input = Path(a.sfx).resolve()
+        if not sfx_input.exists():
+            raise SystemExit(f"[sfx] 指定的微音效母带不存在：{sfx_input}")
+        # 按输入视频实际时长裁剪/补零对齐，兼容 10s 冒烟片与 Stage 1 快审片
+        effects = fit_len(decode_f32(ff, sfx_input, sr=SR, channels=2), v_samples)
+        sfx_source = str(sfx_input)
+        audio_note = (f"已使用 --sfx 指定的微音效母带，按视频时长 {v_dur:.2f}s 裁剪对齐："
+                      f"{sfx_input.name}")
+    elif has_audio_stream(probe, str(video)):
         effects = fit_len(decode_f32(ff, video, sr=SR, channels=2), v_samples)
         audio_note = "已从渲染中间片无损提取 48kHz 立体声微音效轨"
     else:
         effects = np.zeros((v_samples, 2), dtype=np.float32)
         audio_note = "渲染中间片无音轨，按静音基线处理"
+    sfx_peak = float(np.abs(effects).max()) if len(effects) else 0.0
+    sfx_peak_dbfs = round(20.0 * math.log10(sfx_peak + 1e-12), 2)
 
     loop, loop_bars = make_loop(bgm_pcm, bar_sec)
     bgm_track = build_bgm_track(loop, v_samples, int(round(offset * SR)))
@@ -729,7 +796,11 @@ def main(argv=None):
         sfx_path = Path(a.sfx_out).resolve()
         write_wav_16(sfx_path, effects, a.sfx_sr, a.sfx_channels)
         print(f"[sfx] 已导出纯微音效母带：{sfx_path} "
-              f"({a.sfx_sr}Hz / {a.sfx_channels}ch / 16bit)", file=sys.stderr)
+              f"({a.sfx_sr}Hz / {a.sfx_channels}ch / 16bit / 峰值 {sfx_peak_dbfs} dBFS)",
+              file=sys.stderr)
+        if sfx_peak_dbfs < -90.0:
+            print("[sfx][warn] 导出的微音效母带近似静音：输入视频无音轨且未指定 --sfx；"
+                  "如需成片带微音效，请加 --sfx <sfx_mix.wav>。", file=sys.stderr)
 
     a_dur = probe_duration(probe, str(out), "a:0")
     report = {
@@ -762,6 +833,8 @@ def main(argv=None):
         "raw_peak_dbfs_before_scale": round(raw_peak_dbfs, 2),
         "bgm_gap_check": gap_check,
         "preview_duration_sec": a.preview_duration,
+        "sfx_source": sfx_source,
+        "sfx_peak_dbfs": sfx_peak_dbfs,
         "sfx_only_wav": str(sfx_path) if sfx_path else None,
         "output_path": str(out),
         "video_duration_sec": round(v_dur, 3),
@@ -782,6 +855,8 @@ def main(argv=None):
     print(f" 输入片    : {video.name}")
     print(f" 默认单曲  : {bgm.name}  |  BPM {bpm:.2f}  |  小节 {bar_sec:.3f}s  |  循环 {loop_bars} 小节")
     print(f" 节拍档案  : {beats_path.name}")
+    print(f" 微音效轨  : {Path(sfx_source).name if sfx_source else '（无 --sfx，取自视频音轨或静音）'}"
+          f"  峰值 {sfx_peak_dbfs} dBFS")
     if drop_t is not None:
         print(f" 高潮卡点  : Drop#{a.bgm_drop_index} t={drop_t:.3f}s → 画面 {aligned:.3f}s")
         print(f" 起始偏移  : {offset:+.3f}s   |   卡点误差 {climax_err:.3f}s  "
@@ -789,9 +864,10 @@ def main(argv=None):
     else:
         print(f" 起始偏移  : {offset:+.3f}s   （未指定 --align-climax）")
     if fill_info and fill_info.get("enabled"):
+        note = f"  [降档: {fill_info.get('strategy')}]" if fill_info.get("degraded") else ""
         print(f" 前段铺底  : {fill_info['fill_bars']} 小节 @ {fill_info['segment_start_sec']:.2f}s 起  "
               f"{fill_info['gain_db']:+.2f} dB（低 {fill_info['below_climax_db']:.0f} dB / "
-              f"低通 {fill_info['lowpass_hz'] or 'off'}Hz）  铺满 {fill_info['filled_sec']:.1f}s")
+              f"低通 {fill_info['lowpass_hz'] or 'off'}Hz）  铺满 {fill_info['filled_sec']:.1f}s{note}")
     elif offset > 0.05:
         print(" 前段铺底  : 未启用（异常）")
     else:

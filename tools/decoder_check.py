@@ -14,7 +14,8 @@
 v1.1.0（2K）变更
 ----------------
 - 判定口径不再假设 1080×1920 / High@4.2：新增**分辨率 × Level 合法性审计**，
-  按宏块数实测校验 `1440×2560@60` 必须 `High@5.1`、`1080×1920@60` 必须 `High@4.2`；
+  按宏块数实测校验 `1440×2560@60` 必须 `High@5.1`、`1080×1920@60` 认证
+  `High@4.2` 或 `High@5.0`（Remotion CLI 无 `--level`，crf 16 下 x264 会自然升到 5.0）；
 - 分辨率、Level、profile 任一不匹配 → 直接 `FAIL`（不再只是告警）；
 - 纯灰连通域的开运算核按实际宽度等比缩放，2K 下自动从 15px 放大到 20px。
 
@@ -27,7 +28,7 @@ PASS 需同时满足：
   4. 硬解帧「异常纯灰连通域」占比左半屏与全屏均为 `0.0%`。
      纯灰 = 中性（RGB 极差<=20）+ 中灰带（60<=Y<=150）+ 面积>=1% + **平坦（std<=2）**；
      解码故障只会填常量色（实测 std=0.0），带渐变/纹理的灰色设计不计入，避免误杀合法版面。
-  5. **编码档位合法**：`1440×2560@60` → `High@5.1`；`1080×1920@60` → `High@4.2`；
+  5. **编码档位合法**：`1440×2560@60` → `High@5.1`；`1080×1920@60` → `High@4.2` 或 `High@5.0`；
      宏块/秒不得超过该 Level 上限（4.2 = 522,240；5.0 = 589,824；5.1 = 983,040）。
 非常规编码（码率 bpp 过高 / 每帧切片数过多 / 全 I 帧）默认只告警不判死，`--strict` 可升级为硬失败；
 但**档位不匹配是硬失败**——写错 Level 会让严格解码器直接拒解，不是"风格问题"。
@@ -73,10 +74,16 @@ LEVEL_LIMITS = {
     50: {"label": "5.0", "maxFrameMBs": 22080, "maxMBsPerSec": 589824},
     51: {"label": "5.1", "maxFrameMBs": 36864, "maxMBsPerSec": 983040},
 }
-# 认证组合：分辨率@帧率 → 期望 Level（v3.3 起 2K 为标准档，1080p 仅历史兼容）
+# 认证组合：分辨率@帧率 → 允许的 Level 集合（v3.3 起 2K 为标准档，1080p 仅历史兼容）
+#
+# 1080×1920@60 放宽为 {4.2, 5.0}：Remotion 4.0.545 的 CLI 没有 `--level` / `--x264-params`
+# 入口，`crf 16` + 5 参考帧下 x264 会自行升到 Level 5.0。两者都是 ITU-T H.264 Table A-1
+# 的合法档位，且 D3D11VA 均可硬解，因此不再因「自动升档」判失败。
+# 2K 档仍然严格要求 5.1：1440×2560@60 是 864,000 宏块/秒，4.2（522,240）与 5.0（589,824）
+# 都装不下，低于 5.1 必须直接 FAIL。
 EXPECTED_LEVELS = {
-    (1440, 2560, 60): 51,
-    (1080, 1920, 60): 42,
+    (1440, 2560, 60): frozenset({51}),
+    (1080, 1920, 60): frozenset({42, 50}),
 }
 
 # 事故画像：异常灰块的 Y 带与中性判定（沿用 2026-11-20 排雷口径）
@@ -282,11 +289,13 @@ def codec_conformance(stream: dict, width: int, height: int, fps: float) -> dict
     if expected is None:
         notes.append(f"不在认证规格内（{width}×{height}@{fps_r}）："
                      "标准档应为 1440×2560@60")
-    elif level != expected:
-        notes.append(f"Level 写错：{width}×{height}@{fps_r} 必须 "
-                     f"High@{LEVEL_LIMITS[expected]['label']}，实际 {level_label(level)}")
+    elif level not in expected:
+        allowed = " / ".join(
+            f"High@{LEVEL_LIMITS[code]['label']}" for code in sorted(expected))
+        notes.append(f"Level 写错：{width}×{height}@{fps_r} 只认证 {allowed}，"
+                     f"实际 {level_label(level)}")
     if lim is None:
-        notes.append(f"未知 Level 编码 {level}（认证 4.2 / 5.1）")
+        notes.append(f"未知 Level 编码 {level}（认证 4.2 / 5.0 / 5.1）")
     else:
         if mb_frame > lim["maxFrameMBs"]:
             notes.append(f"帧宏块数 {mb_frame} 超过 Level {lim['label']} 上限 "
@@ -296,7 +305,8 @@ def codec_conformance(stream: dict, width: int, height: int, fps: float) -> dict
                          f"{lim['maxMBsPerSec']}/s")
 
     return {
-        "expectedLevel": LEVEL_LIMITS[expected]["label"] if expected else None,
+        "expectedLevel": LEVEL_LIMITS[min(expected)]["label"] if expected else None,
+        "expectedLevels": [LEVEL_LIMITS[code]["label"] for code in sorted(expected)] if expected else None,
         "actualLevel": level_label(level),
         "actualLevelCode": level or None,
         "profile": profile or None,
@@ -347,7 +357,7 @@ def encoding_audit(ffmpeg: str, ffprobe: str, movie: Path, stream: dict, audit_f
     pix = (stream.get("pix_fmt") or "")
     if codec and codec != "h264":
         warnings.append(f"编码并非 H.264（{codec}）：全平台硬解兼容红线只认证 "
-                        "H.264 High@5.1（2K）/ High@4.2（1080p）+ yuv420p")
+                        "H.264 High@5.1（2K）/ High@4.2 或 5.0（1080p）+ yuv420p")
     if pix and pix != "yuv420p":
         warnings.append(f"像素格式并非 yuv420p（{pix}）：全平台兼容基线为 yuv420p")
 

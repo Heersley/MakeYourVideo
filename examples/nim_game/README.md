@@ -49,8 +49,9 @@ examples/nim_game/
 # 0) 在仓库根目录装依赖
 npm install
 pip install -r requirements.txt
+playwright install chromium         # 只有要跑下面的 QC 脚本才需要
 
-# 1) 字体 → public/fonts/（见 assets/fonts/README.md）
+# 1) 字体 → public/fonts/（见 assets/fonts/README.md；public/ 不在仓库里，要先建）
 mkdir -p public/fonts
 
 # 2) 程序化道具：生成 4 个石子精灵 + 几何数据
@@ -58,21 +59,50 @@ cd examples/nim_game
 python src/gen_stones.py            # 输出到 src/assets/stone_v0..3.png 与 stone_geometry.json
 cp src/assets/stone_v*.png ../../public/
 
-# 3) 微音效（可选，用于混音）
+# 3) 微音效（混音阶段要显式传给 mix_bgm.py --sfx，不传就不会进成片）
 python src/gen_sfx.py               # 输出 src/sfx_mix.wav（约 35 MB，已被 .gitignore 排除）
 
-# 4) 渲染（184s 全片；先试 5 秒可用 --frames=0-300）
+# 4) 渲染（184s 全片；先试 10 秒用 --frames=0-599）
 cd ../..
-npm run render:example              # → out/nim-cinema.mp4
+npm run render:example              # → out/nim-cinema.mp4（已内置 --color-space=bt709）
 
-# 5) 混音成唯一成片
+# 5) 混音成唯一成片（注意 --sfx）
 python tools/bgm_analyze.py assets/bgm/<your-track>.m4a
 python tools/mix_bgm.py --video out/nim-cinema.mp4 --bgm assets/bgm/<your-track>.m4a \
+  --sfx examples/nim_game/src/sfx_mix.wav \
   --output out/nim.mp4 --align-climax 122 --sfx-out out/sfx_only.wav
 
 # 6) 验收
-python tools/decoder_check.py --video out/nim.mp4 --output out/decoder_check.json
+python tools/decoder_check.py --video out/nim.mp4 --output out/decoder_check.json --strict
 ```
+
+> **本示例的渲染中间片没有音轨**：`entry.tsx` 的三个 composition 都没有挂 `<Audio>`，`sfx_mix.wav` 不会自动混进去。必须用 `--sfx` 显式指定，否则成片只有 BGM（`--sfx-out` 会是近似静音母带，工具会打 warning）。
+>
+> **`--frames` 是闭区间**：`--frames=0-599` = 600 帧 = 10.0 s @60fps；`0-299` 才是 5.0 s。
+>
+> **自己手写渲染命令时**：务必带 `--pixel-format=yuv420p --color-space=bt709`，否则 Remotion 默认输出 full-range `yuvj420p`，`decoder_check.py` 的 `yuv420p` 基线会判失败。
+
+### 版面 / 快审 QC 怎么跑
+
+```bash
+cd examples/nim_game
+
+# 锁定输入自检（不跑浏览器，最快）
+python src/preview_qc.py --verify-locks
+
+# 版面自检（31 幕 DOM 边界 + 字体平台采样，需要 public/fonts 已就位）
+python src/preview_qc.py .work/lay --layout-only
+python src/full_qc.py .work/fq --layout-only
+python src/bounds.py --work .work/bounds
+```
+
+> `full_qc.py` 的完整流程需要一份**原生 PNG 序列**（`<work>/frames/element-*.png`，11040 帧）。
+> 仓库不提供该序列，也没有内置导出命令；需要时自己用 `remotion render ... --sequence --image-format=png`
+> 生成后再跑，否则会报 `No native Remotion PNGs were found in <work>/frames`。
+>
+> 三个 QC 脚本的 `work` 目录必须位于 `examples/nim_game/.work/` 之内（脚本会校验）。
+> 快审视频流程还依赖 `examples/nim_game/review/stone_closeup_check.png` 这类 Stage 1 留存产物，
+> 干净克隆下没有，因此 `preview_qc.py` 的**完整**（非 `--layout-only`）模式跑不通，属预期。
 
 ## 与现行 v3.3 的差异
 
@@ -91,8 +121,16 @@ python tools/decoder_check.py --video out/nim.mp4 --output out/decoder_check.jso
 ## 已知缺口（按 `.gitignore` 未入库）
 
 - 字体、石子 PNG、`sfx_mix.wav`、各类 `*_qc.json` / `bounds.json`、渲染成片；
-- `publish_stage2.py` 与 `render*.ps1` 未包含：前者绑定旧双版交付，后者是本地渲染编排；
-- 版面检查脚本依赖 Playwright：`pip install playwright && playwright install chromium`。
+- **原生 PNG 帧序列**（`full_qc.py` 的输入）：仓库不含，也没有内置导出命令，需自行
+  `remotion render examples/nim_game/src/entry.tsx NimCinema <work>/frames/element --sequence --image-format=png`；
+- **Stage 1 留存产物**（`review/stone_closeup_check.png`、`review/text_exit_*.png` 等）：
+  `preview_qc.py` 的完整模式（非 `--layout-only`）依赖它们做帧差与尾迹对比，干净克隆下必然缺失；
+- `publish_stage2.py` 与 `render*.ps1` 未包含：前者绑定旧双版交付，后者是本地渲染编排。
+
+> 三个 QC 脚本（`bounds.py` / `preview_qc.py` / `full_qc.py`）已跨平台化：FFmpeg 走
+> `FFMPEG_BIN → PATH → WinGet` 兜底，Chromium 优先用 Remotion 自带的 `chrome-headless-shell`、
+> 缺失时回落 Playwright 自带浏览器。但 `full_qc.py` 的编码审计仍按 Windows D3D11VA 口径设计，
+> macOS / Linux 上只能得到软解一致性结论。
 
 ## 读代码的顺序
 

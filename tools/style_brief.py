@@ -7,9 +7,9 @@
   「待视觉模型判定」清单，由下游模型（或 Agent）补完后再定稿。
 
 用法:
-  python TOOL/style_brief.py --video output/evergreen/2026-11-19/01_帕累托前沿/15秒样片_净画面.mp4
-  python TOOL/style_brief.py --video a.mp4 --out ./style --max-frames 12
-  python TOOL/style_brief.py --frames ./frames --out ./style     # 已有帧目录时跳过抽帧
+  python tools/style_brief.py --video output/<slug>/<主题>.mp4
+  python tools/style_brief.py --video a.mp4 --out ./style --max-frames 12
+  python tools/style_brief.py --frames ./frames --out ./style     # 已有帧目录时跳过抽帧
 
 输出:
   <out>/style_brief.md      人读报告
@@ -603,7 +603,7 @@ def semantics_request(r, outdir):
         })
     sheet = r.get("contact_sheet")
     req = {
-        "produced_by": "TOOL/style_brief.py",
+        "produced_by": "tools/style_brief.py",
         "source": r["source"],
         "contact_sheet": sheet,
         "frames_dir": str(Path(sheet).parent / "frames") if sheet else None,
@@ -635,7 +635,7 @@ def semantics_request(r, outdir):
         },
         "how_to_reply": ("只回一个符合 reply_schema 的 JSON。看完 contact_sheet.png"
                          "（必要时看 frames/ 单帧）后执行 "
-                         "python TOOL/style_brief.py --out <本目录> --semantics <该 JSON> 回填。"),
+                         "python tools/style_brief.py --out <本目录> --semantics <该 JSON> 回填。"),
     }
     p = Path(outdir) / "semantics_request.json"
     p.write_text(json.dumps(req, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -655,7 +655,7 @@ def render_semantics(sem, r):
         L.append("把它和 `contact_sheet.png` 一起交给视觉模型，按 schema 回答后回填：")
         L.append("")
         L.append("```powershell")
-        L.append(f'python TOOL/style_brief.py --out "{outdir}" --semantics semantics.json')
+        L.append(f'python tools/style_brief.py --out "{outdir}" --semantics semantics.json')
         L.append("```")
         L.append("")
         L.append("需要模型回答的 5 件事：")
@@ -763,7 +763,7 @@ def render_md(r, ffmpeg_ver, note, sem=None):
     m = r["meta"]
     L.append("# style_brief")
     L.append("")
-    L.append(f"> 由 `TOOL/style_brief.py` 自动生成 · 样本 `{Path(r['source']).name}` · "
+    L.append(f"> 由 `tools/style_brief.py` 自动生成 · 样本 `{Path(r['source']).name}` · "
              f"{r['frames_analyzed']} 帧 · ffmpeg {ffmpeg_ver}")
     if sem:
         L.append("> 几何与颜色为脚本实测；语义判定（层级角色、字体、AIGC 标识）"
@@ -844,7 +844,7 @@ def render_md(r, ffmpeg_ver, note, sem=None):
     L.append("## 7. 复现")
     L.append("")
     L.append("```powershell")
-    L.append(f"python TOOL/style_brief.py --video \"{r['source']}\"")
+    L.append(f"python tools/style_brief.py --video \"{r['source']}\"")
     L.append("```")
     L.append("")
     L.append(f"ffmpeg 来源：{note}")

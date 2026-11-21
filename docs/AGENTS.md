@@ -41,7 +41,7 @@
 
 | 脚本 | 职责 |
 |---|---|
-| `tools/decoder_check.py` | 硬解验收闸门：D3D11VA vs 软解原生 NV12 对拍 + 纯灰连通域检测 + 编码档位审计（2K→`High@5.1`，1080p→`High@4.2`） |
+| `tools/decoder_check.py` | 硬解验收闸门：D3D11VA vs 软解原生 NV12 对拍 + 纯灰连通域检测 + 编码档位审计（2K→`High@5.1`；1080p→`High@4.2` 或 `High@5.0`） |
 | `tools/mix_bgm.py` | 交付终混：卡 Drop + 正偏移前段铺底 + 全片断层自检 + 唯一成片输出 + `sfx_only.wav` 导出 + 快审片时长裁剪 |
 | `tools/bgm_analyze.py` / `bgm_common.py` | 测拍与节拍档案、PCM 解码、工具定位 |
 | `tools/style_brief.py` | 从成片反推底色 / 色板 / 三段式占比 / 字阶 |
@@ -56,13 +56,19 @@
 .
 ├── docs/                     # 规范与流程
 ├── tools/                    # 公用脚本（保持洁净，不放一次性实验）
+├── public/
+│   └── fonts/                # 渲染 + QC 实际读取的字库位置（不入库，需自建）
 ├── assets/
-│   ├── fonts/                # 三套 OFL 字库（不入库）
+│   ├── fonts/                # 同名字库的可选归档位（QC 会回退查找，不入库）
 │   └── bgm/                  # 自备配乐 + 生成的 *.beats.json（音频不入库）
 ├── examples/<name>/          # 可复现示例（纯源码）
 ├── topics/<slug>.md          # 选题卡（自建）
 └── output/<slug>/            # 交付目录（不入库）
 ```
+
+> 字体的**唯一必需位置是 `public/fonts/`**（Remotion `staticFile('fonts/…')` 的根）。
+> `examples/nim_game/src/bounds.py` 的查找顺序为 `public/fonts/` → `assets/fonts/` → `examples/nim_game/src/assets/fonts/`，
+> 所以只放 `public/fonts/` 就能同时跑通渲染与版面 QC。
 
 ### 2.2 命名与隔离
 
@@ -129,6 +135,8 @@ Remotion 单期源码（持久舞台状态机，1440×2560 @ 60fps）
 - 逐字符遵守 `STYLE_B` §5.0：`-level:v 5.1 -crf 16 -preset slow -g 120`。
 - **严禁** `slice-max-mbs`、`slices>1`、全 I 帧、阅读窗像素复制——它们会让 D3D11VA 解出纯灰块。
 - `Level 5.1` 是硬约束：`1440×2560@60` = 14,400 宏块/帧、864,000 宏块/秒，4.2（522,240）与 5.0（589,824）都装不下。
+- **`-level:v` / `-g` 的落法**：Remotion CLI 无 `--level` / `--x264-params`；`-c:v copy` 不会改写编码级别，需按 §5.0 用 `libx264` 重编码一次（`-profile:v high -level:v 5.1 -pix_fmt yuv420p -crf 16 -preset slow -g 120`）。渲染时另需 `--color-space=bt709`，否则 Remotion 默认输出 full-range `yuvj420p`。2K 渲染内存吃紧时加 `--concurrency=2` 或 `3`。
+- **1080p 历史档例外**：`decoder_check.py` 对 `1080×1920@60` 认证 `{High@4.2, High@5.0}`——Remotion 自动升档到 5.0 是合法的，不判失败；2K 档仍严格要求 `5.1`。
 - **2K 省盘**：全片流式直出，禁止整片 PNG 序列落盘；无损验收用定点抽帧（每幕阅读窗 3–4 帧 + 非硬切交界成对帧，全片约 120–180 张）。
 - **严禁 `-an`**；混音/封装一律 `-c:v copy`，画面零二次编码。
 - 体积自查：2K 标准档 18–65 MB；异常膨胀先怀疑编码 Hack。
@@ -208,6 +216,7 @@ Remotion 单期源码（持久舞台状态机，1440×2560 @ 60fps）
 ① 严格按 STYLE_B §5.0 编码；严禁 slice-max-mbs、全 I 帧、slices=NN、阅读窗像素复制。
 ② 定点抽帧跑 text_box_diff === 0.000 与 seam_delta。
 ③ tools/mix_bgm.py 出唯一成品 <主题>.mp4 + src/sfx_only.wav + bgm_mix_report.json；
+   **必须传 `--sfx <slug>/src/sfx_mix.wav`**（Remotion 合成不挂 `<Audio>`，不传则成片无微音效）；
    确认 bgm_gap_check.pass = true、climax_error_sec ≤ 0.03。
 ④ 6 项硬验收；第 6 项 tools/decoder_check.py --strict 对唯一成品跑 1 次，PASS 后落盘 src/decoder_check.json。
 ⑤ 成品与报告全部落在 .work/ 之外且可读后，自动清理本期 .work/。

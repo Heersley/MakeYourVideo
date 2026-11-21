@@ -13,8 +13,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
 
-from bounds import PROJECT, inspect_full_layout, inspect_key_details, reading_bounds, reading_frames, serve_layout
-from preview_qc import EPISODE, SOURCE, pinned_tools, probe_media, verify_locked_sources, write_json
+from bounds import PROJECT, inspect_full_layout, inspect_key_details, launch_chromium, reading_bounds, reading_frames, serve_layout
+from preview_qc import EPISODE, SOURCE, contact_sheet_font, pinned_tools, probe_media, verify_locked_sources, write_json
 
 FPS, COUNT, SIZE = 60, 11040, (1080, 1920)
 CLIP = "尼姆博弈_cinema_clean.mp4"
@@ -159,10 +159,9 @@ def inspect_title_hold(files):
 
 
 def inspect_pickup_sync(work, score):
-    browser_path = next((PROJECT / "node_modules/.remotion/chrome-headless-shell").rglob("chrome-headless-shell.exe"))
     observations = []
     with serve_layout(work) as address, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=str(browser_path))
+        browser = launch_chromium(playwright)
         page = browser.new_page(viewport={"width": SIZE[0], "height": SIZE[1]})
         page.goto(address, wait_until="load")
         page.evaluate("async () => { await window.loadNimSceneFonts(); await document.fonts.ready; }")
@@ -413,7 +412,7 @@ def make_images(work, thumbnails, statistics, cover_beat):
     cols, width, height, pad, caption = 6, 200, 356, 14, 27
     nrows = math.ceil(len(metadata) / cols)
     page = Image.new("RGB", (pad + cols * (width + pad), pad + nrows * (height + caption + pad)), "#101114")
-    font = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", 15)
+    font = contact_sheet_font(15)
     draw = ImageDraw.Draw(page)
     cover = f"B{cover_beat:02d}"
     for index, marker in enumerate(metadata):

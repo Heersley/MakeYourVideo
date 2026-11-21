@@ -70,8 +70,12 @@
 ① 编码严格按 STYLE_B §5.0：
    -c:v libx264 -profile:v high -level:v 5.1 -pix_fmt yuv420p -crf 16 -preset slow -g 120 -movflags +faststart
    严禁 slice-max-mbs、全 I 帧、slices=NN、阅读窗像素复制。
+   注意：Remotion CLI 无 --level / --x264-params，且 -c:v copy 不会改写编码级别；
+   -level:v 与 -g 需按上面参数用 libx264 重编码一次。2K 内存吃紧时加 --concurrency=2 或 3。
+   渲染命令必须带 --pixel-format=yuv420p --color-space=bt709，否则会输出 full-range yuvj420p。
 ② 定点抽帧（每幕阅读窗 3–4 帧 + 非硬切交界成对帧），跑 text_box_diff === 0.000 与 seam_delta。
 ③ tools/mix_bgm.py 出唯一成品 <主题>.mp4 + src/sfx_only.wav + bgm_mix_report.json；
+   必须传 --sfx <slug>/src/sfx_mix.wav（不传则成片无微音效）；
    确认 bgm_gap_check.pass = true、climax_error_sec ≤ 0.03。
 ④ 跑齐 6 项验收；第 6 项 tools/decoder_check.py --strict 对唯一成品跑 1 次，
    PASS 后落盘 src/decoder_check.json。

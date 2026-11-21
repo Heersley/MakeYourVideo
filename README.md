@@ -92,7 +92,7 @@ flowchart TB
 MakeYourVideo/
 ├── README.md · LICENSE · .gitignore · .gitattributes
 ├── package.json                 Remotion 4.0.545 / React 19
-├── requirements.txt             numpy / opencv / pillow / scipy / fonttools / playwright
+├── requirements.txt             numpy / opencv / pillow / scipy / fonttools / brotli / playwright
 ├── docs/
 │   ├── PROCESS.md               协作流程与四个卡点
 │   ├── AGENTS.md                生产执行规范（目录、交付白名单、硬规则）
@@ -117,9 +117,19 @@ MakeYourVideo/
 | 依赖 | 要求 | 校验 |
 |---|---|---|
 | Node.js | `^20.19` / `^22.13` / `>=24` | `node -v` |
-| Python | 3.11+（开发用 3.12） | `python -V` |
-| FFmpeg / ffprobe | **9+**，含 `libx264`；硬解验收需 `d3d11va`（Windows） | `ffmpeg -version` |
+| Python | 3.11+（开发用 3.12；3.13 亦可） | `python -V` |
+| FFmpeg / ffprobe | **7+**（推荐 9.0.2），含 `libx264`；硬解验收需 `d3d11va`（Windows） | `ffmpeg -version` |
 | 磁盘 | 2K 成片 18–65 MB / 条，渲染中间物另需 1–2 GB | — |
+
+> **FFmpeg 版本口径**：`tools/bgm_common.py` 与 `tools/decoder_check.py` 的硬门槛都是 **major ≥ 7**（低于 7 缺 `d3d11` 输出格式与新 `-fps_mode` 语法）；9.0.2 是开发验证版本，只用于报告里的 `pinnedMatched` 提示，不强制。
+>
+> **PATH 上有旧 FFmpeg 时**：两个工具都会自动跳过 major < 7 的构建。若你的 `ffmpeg -version` 明显偏旧（如 2013 年的 `N-55702`），用环境变量指定新版即可，无需改 PATH：
+>
+> ```bash
+> export FFMPEG_BIN=/path/to/ffmpeg-9.0.2/bin/ffmpeg.exe   # Windows: set FFMPEG_BIN=...
+> ```
+>
+> 定位优先级：显式 `--ffmpeg` 参数 → `FFMPEG_BIN` → Windows WinGet 包目录 → `PATH`。
 
 > 硬解对拍只在 Windows D3D11VA 下有效；macOS / Linux 会退化为软解一致性与编码档位审计，属预期行为。
 
@@ -135,24 +145,30 @@ npm install
 python -m venv .venv
 . .venv/Scripts/activate            # Windows；macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+playwright install chromium         # 只有跑示例的版面/快审 QC 才需要
 
-# 3) 开源字体 → assets/fonts/（下载地址见 assets/fonts/README.md）
-mkdir -p assets/fonts public/fonts
-#   把 6 个字重文件放进 assets/fonts/，渲染前同步到 public/fonts/（Remotion staticFile 根）
+# 3) 开源字体 → public/fonts/（下载地址与文件清单见 assets/fonts/README.md）
+mkdir -p assets/fonts public/fonts  # public/ 不在仓库里，必须先建
+#   把 6 个字重文件直接放进 public/fonts/（Remotion staticFile 根）；
+#   assets/fonts/ 是可选的长期归档位，QC 与渲染都会自动回退查找。
 
 # 4) 自备配乐 → assets/bgm/
 cp <your-cc0-track>.m4a assets/bgm/
 python tools/bgm_analyze.py assets/bgm/<your-cc0-track>.m4a
 
-# 5) 生成示例的程序化道具并渲染（184s；先试 5 秒可加 --frames=0-300）
-cd examples/nim_game && python src/gen_stones.py && cd ../..
+# 5) 生成示例的程序化道具、微音效，并渲染
+cd examples/nim_game
+python src/gen_stones.py            # → src/assets/stone_v0..3.png
+python src/gen_sfx.py               # → src/sfx_mix.wav（约 35 MB，混音要用）
+cd ../..
 cp examples/nim_game/src/assets/stone_v*.png public/
-npm run render:example
+npm run render:example              # 184s 全片；先试 10 秒加 --frames=0-599（60fps）
 
 # 6) 混音成唯一成片 + 硬解验收
 python tools/mix_bgm.py \
   --video out/nim-cinema.mp4 \
   --bgm assets/bgm/<your-cc0-track>.m4a \
+  --sfx examples/nim_game/src/sfx_mix.wav \
   --output out/nim.mp4 \
   --align-climax 122 \
   --sfx-out out/sfx_only.wav
@@ -160,7 +176,35 @@ python tools/mix_bgm.py \
 python tools/decoder_check.py --video out/nim.mp4 --output out/decoder_check.json --strict
 ```
 
-> 严格对齐 `docs/STYLE_B_SILENT_VIBE.md` §5.0 的 `-g 120 / -level:v 5.1` 时，用 Remotion 的 `--x264-params` 传入（不同版本参数名略有差异，以 `npx remotion render --help` 为准）。核心是**不要用 `slice-max-mbs`、多 slice、全 I 帧**——这三样会让 D3D11VA 解出纯灰块。
+> **`--frames` 是闭区间**：`--frames=0-599` = 600 帧 = 10.0 s @60fps；想要正好 5 s 请写 `--frames=0-299`（不是 `0-300`）。
+>
+> **色彩范围必须显式指定**：Remotion 默认输出 full-range `yuvj420p`，会让 `decoder_check.py` 的 `yuv420p` 基线判失败。`npm run render:example` 已内置 `--color-space=bt709`；自己手写 `remotion render` 命令时务必一并带上 `--pixel-format=yuv420p --color-space=bt709`。
+>
+> **微音效走 `--sfx`**：`examples/nim_game` 的 Remotion 合成里没有挂 `<Audio>`，渲染中间片是无音轨的。想让成片带 25 个微音效，必须显式传 `--sfx examples/nim_game/src/sfx_mix.wav`；不传则 `--sfx-out` 导出的是近似静音母带（工具会打 warning 提示）。
+>
+> **`-level:v` 到底怎么定**：Remotion 4.0.545 的 CLI **没有** `--level` / `--x264-params` 入口。日常直接用 `npm run render:example` 即可——1080p@60 下 x264 会自然产出 `High@5.0`，`decoder_check.py` 已把 1080p@60 放行到 `{4.2, 5.0}` 两档。
+>
+> 若确实需要**强制指定精确的 Level / GOP**（例如 2K 必须 `High@5.1` + `-g 120`），不能靠 `-c:v copy` 改封装——**`-c:v copy` 只搬运码流、不会改写 H.264 编码级别**，必须真正重编码一次，走 FFmpeg 完整参数：
+>
+> ```bash
+> ffmpeg -i in.mp4 -c:v libx264 -profile:v high -level:v 5.1 \
+>   -pix_fmt yuv420p -crf 16 -preset slow -g 120 -movflags +faststart out.mp4
+> ```
+>
+> 核心是**不要用 `slice-max-mbs`、多 slice、全 I 帧**——这三样会让 D3D11VA 解出纯灰块。
+
+---
+
+## 排错
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `Chrome ran out of memory or disk space` / `Timed out ... delayRender()` | 渲染并发过高（2K 渲染、或本机浏览器标签较多时尤其明显），Chrome 实例吃满内存 | 在 Remotion 命令后加 `--concurrency=2` 或 `--concurrency=3` 降低并发，例如 `npm run render:example -- --concurrency=3` |
+| 渲染报 6 个 `404 (Not Found)` + `NetworkError` | `public/fonts/` 里缺字体，或文件名与 `Fonts.tsx` 的 `faces` 表不一致 | 按 `assets/fonts/README.md` 的 6 个文件名逐字符核对 |
+| `decoder_check.py` 报「像素格式并非 yuv420p（yuvj420p）」 | 渲染时漏了 `--color-space=bt709` | 补上该参数重渲（`render:example` 已内置） |
+| `[fill] 未找到可用铺底乐段` / `[fill][warn] 铺底降档` | 配乐偏短、`--align-climax` 远大于曲长 | 已有降档与 warning；若仍无解请换更长的曲子或调小 `--align-climax` |
+| `未找到 FFmpeg` / 版本被拒 | PATH 上的 `ffmpeg` 低于 major 7 | 用 `FFMPEG_BIN` 指定新版可执行文件 |
+| `No native Remotion PNGs were found` | `full_qc.py` 需要原生 PNG 序列，仓库不提供 | 见 `examples/nim_game/README.md` 的「版面 / 快审 QC 怎么跑」 |
 
 ---
 
