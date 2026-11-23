@@ -1,0 +1,444 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "id",
+    "hard",
+    "defaults",
+    "allowedOverrides"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^vibe-[0-9]+[.][0-9]+$"
+    },
+    "hard": {
+      "type": "object",
+      "required": [
+        "video",
+        "decoder",
+        "visual",
+        "audio",
+        "timeline"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "video": {
+          "type": "object",
+          "required": [
+            "width",
+            "height",
+            "fps",
+            "previewFps",
+            "previewScale",
+            "previewSec",
+            "encoder",
+            "codec",
+            "profile",
+            "level",
+            "pixFmt",
+            "colorSpace",
+            "crf",
+            "preset",
+            "gop",
+            "movflags",
+            "presetEvidence"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "fps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "previewFps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "previewScale": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "previewSec": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "encoder": {
+              "type": "string",
+              "minLength": 1
+            },
+            "codec": {
+              "type": "string",
+              "minLength": 1
+            },
+            "profile": {
+              "type": "string",
+              "minLength": 1
+            },
+            "level": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pixFmt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "colorSpace": {
+              "type": "string",
+              "minLength": 1
+            },
+            "crf": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 51
+            },
+            "preset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gop": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "movflags": {
+              "type": "string",
+              "minLength": 1
+            },
+            "presetEvidence": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "decoder": {
+          "type": "object",
+          "required": [
+            "maxMae",
+            "maxPeak",
+            "maxGrayPct",
+            "slicesPerFrame",
+            "sampleEvery"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "maxMae": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "maxPeak": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "maxGrayPct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "slicesPerFrame": {
+              "type": "integer",
+              "const": 1
+            },
+            "sampleEvery": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "visual": {
+          "type": "object",
+          "required": [
+            "safeZone",
+            "roiY",
+            "roiDelta",
+            "fullDelta",
+            "maxStaticSec",
+            "endMarginSec",
+            "motionHz",
+            "maxTextDelta",
+            "darkBelow",
+            "lightAbove",
+            "lighting"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "safeZone": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "roiY": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "roiDelta": {
+              "type": "number",
+              "minimum": 0
+            },
+            "fullDelta": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maxStaticSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "endMarginSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "motionHz": {
+              "type": "integer"
+            },
+            "maxTextDelta": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "darkBelow": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "lightAbove": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "lighting": {
+              "type": "object",
+              "required": [
+                "studio_dark",
+                "keynote_light"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "studio_dark": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "keynote_light": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "audio": {
+          "type": "object",
+          "required": [
+            "lufs",
+            "sfxPeak",
+            "truePeakMax",
+            "climaxErrorSec",
+            "gapMaxSec",
+            "gapStartSec",
+            "gapEndMarginSec",
+            "avDurationToleranceSec",
+            "codec",
+            "channels",
+            "sampleRate",
+            "bitrate"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lufs": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "sfxPeak": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "truePeakMax": {
+              "type": "integer"
+            },
+            "climaxErrorSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "gapMaxSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "gapStartSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "gapEndMarginSec": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "avDurationToleranceSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "codec": {
+              "type": "string",
+              "minLength": 1
+            },
+            "channels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "sampleRate": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "bitrate": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "timeline": {
+          "type": "object",
+          "required": [
+            "duration",
+            "maxCuts",
+            "readingSec",
+            "cinemaCues",
+            "maxTextChars"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "type": "object",
+              "required": [
+                "standard",
+                "long"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "standard": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "long": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "maxCuts": {
+              "type": "object",
+              "required": [
+                "cinema",
+                "rhythmic"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "cinema": {
+                  "type": "integer"
+                },
+                "rhythmic": {
+                  "type": "integer"
+                }
+              }
+            },
+            "readingSec": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number"
+              }
+            },
+            "cinemaCues": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "maxTextChars": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": [
+        "beatDurationSec"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "beatDurationSec": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "allowedOverrides": {
+      "type": "array",
+      "items": {
+        "const": "beat_duration"
+      },
+      "uniqueItems": true,
+      "maxItems": 1
+    }
+  }
+}

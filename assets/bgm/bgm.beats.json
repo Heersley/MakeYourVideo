@@ -1,0 +1,14 @@
+{
+  "_note": "Lightweight synthetic beat-map fixture for documentation/tests. No audio is shipped. Generate a real one with tools/bgm_analyze.py <your-track>.",
+  "file_name": "bgm.m4a",
+  "duration_sec": 184.615,
+  "bpm": 112.69,
+  "bar_sec": 2.129736,
+  "beats_per_bar": 4,
+  "bar_times": [1.3435, 3.4732, 5.603, 7.7327],
+  "drops": [
+    {"t": 18.381, "rise_db": 8.25},
+    {"t": 103.571, "rise_db": 7.64}
+  ],
+  "quiet_spans": []
+}

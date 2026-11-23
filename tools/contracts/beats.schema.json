@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "track",
+    "cut_mode",
+    "lighting",
+    "asset_layers",
+    "alignClimaxSec",
+    "totalSec",
+    "fps",
+    "duration_tier",
+    "beats",
+    "effects"
+  ],
+  "properties": {
+    "track": {
+      "const": "evergreen_vibe"
+    },
+    "fps": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "lighting": {
+      "enum": [
+        "studio_dark",
+        "keynote_light"
+      ]
+    },
+    "duration_tier": {
+      "enum": [
+        "standard",
+        "long"
+      ]
+    },
+    "cut_mode": {
+      "enum": [
+        "cinema",
+        "rhythmic"
+      ]
+    },
+    "asset_layers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "vector",
+          "3d",
+          "2.5d_parallax"
+        ]
+      }
+    },
+    "alignClimaxSec": {
+      "type": "number"
+    },
+    "totalSec": {
+      "type": "number"
+    },
+    "beats": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "startSec",
+          "endSec",
+          "durationSec",
+          "readingStartSec",
+          "readingEndSec",
+          "hardCut",
+          "lines"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "lines": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "hardCut": {
+            "type": "boolean"
+          },
+          "startSec": {
+            "type": "number"
+          },
+          "endSec": {
+            "type": "number"
+          },
+          "durationSec": {
+            "type": "number"
+          },
+          "readingStartSec": {
+            "type": "number"
+          },
+          "readingEndSec": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "timeSec",
+          "type"
+        ],
+        "properties": {
+          "timeSec": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

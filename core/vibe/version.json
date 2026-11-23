@@ -1,0 +1,12 @@
+{
+  "coreVersion": "1.2.0",
+  "files": {
+    "Fonts.tsx": "dbbaca026a5d698d5ef1f19be48897018ecd86a653b67e85826fb79a9c362960",
+    "StageBase.tsx": "c753048f355fdb7038f4f25e1b4aea3eb7b813a0fa102e65dd7de8d0722267be",
+    "TextLifecycle.tsx": "2758719f318822e6bee255916fd65745823666e4511a3547df0ad7b3994772cf",
+    "clock.ts": "969c4075abd4da8efda59f3449cff2e28f9d9510ab1bfe677efea280971eafbe",
+    "sfx_engine.py": "5a3bc542b9b07ba460044f878170f91234f83d00f55ca4492bc944599a678c69",
+    "tokens.ts": "96f8eb4997a49393a58ba951b4b4e97861c45e2f9e30b68dac37f35302fcafb7",
+    "tsconfig.json": "e0bb85571bffd7c242f090f0f65e2d0b2b06a63f1114ff554b9a91cf2a4cfc26"
+  }
+}

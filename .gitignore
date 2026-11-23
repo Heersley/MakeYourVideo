@@ -48,6 +48,25 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# 私有业务与本地环境（严禁进入公开仓）
+backups/
+inbox/
+.codex/
+.claude/
+.workbuddy/
+.workbuddy-ai/
+env.local.json
+tools/env.local.json
+fix.md
+*.bundle
+*.zip
+*.png
+*.jpg
+
+# 浏览器登录态 / Cookie / Token
+cookies.json
+tokens.json
+
 # 本地环境与日志
 .env
 .env.*

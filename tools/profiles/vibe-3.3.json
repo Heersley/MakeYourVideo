@@ -1,0 +1,130 @@
+{
+  "id": "vibe-3.3",
+  "hard": {
+    "video": {
+      "width": 1440,
+      "height": 2560,
+      "fps": 60,
+      "previewFps": 30,
+      "previewScale": 0.5,
+      "previewSec": [
+        25,
+        35
+      ],
+      "encoder": "libx264",
+      "codec": "h264",
+      "profile": "high",
+      "level": "5.1",
+      "pixFmt": "yuv420p",
+      "colorSpace": "bt709",
+      "crf": 16,
+      "preset": "slow",
+      "gop": 120,
+      "movflags": "+faststart",
+      "presetEvidence": [
+        "subme=8",
+        "trellis=2",
+        "rc_lookahead=50"
+      ]
+    },
+    "decoder": {
+      "maxMae": 0,
+      "maxPeak": 0,
+      "maxGrayPct": 0,
+      "slicesPerFrame": 1,
+      "sampleEvery": 6
+    },
+    "visual": {
+      "safeZone": [
+        120,
+        240,
+        1212,
+        2000
+      ],
+      "roiY": [
+        720,
+        1866
+      ],
+      "roiDelta": 0.05,
+      "fullDelta": 0.025,
+      "maxStaticSec": 1.8,
+      "endMarginSec": 1.5,
+      "motionHz": 10,
+      "maxTextDelta": 0,
+      "darkBelow": 40,
+      "lightAbove": 210,
+      "lighting": {
+        "studio_dark": [
+          84,
+          95
+        ],
+        "keynote_light": [
+          72,
+          92
+        ]
+      }
+    },
+    "audio": {
+      "lufs": [
+        -18,
+        -14
+      ],
+      "sfxPeak": [
+        -16,
+        -12
+      ],
+      "truePeakMax": -1,
+      "climaxErrorSec": 0.03,
+      "gapMaxSec": 1.5,
+      "gapStartSec": 0.5,
+      "gapEndMarginSec": 2,
+      "avDurationToleranceSec": 0.03,
+      "codec": "aac",
+      "channels": 2,
+      "sampleRate": 48000,
+      "bitrate": "256k"
+    },
+    "timeline": {
+      "duration": {
+        "standard": [
+          75,
+          140
+        ],
+        "long": [
+          140,
+          240
+        ]
+      },
+      "maxCuts": {
+        "cinema": 8,
+        "rhythmic": 36
+      },
+      "readingSec": [
+        0.9,
+        1.25
+      ],
+      "cinemaCues": [
+        10,
+        25
+      ],
+      "maxTextChars": 22
+    }
+  },
+  "defaults": {
+    "beatDurationSec": [
+      [
+        4.4,
+        5.2
+      ],
+      [
+        5.8,
+        7.2
+      ],
+      [
+        7,
+        8.5
+      ]
+    ]
+  },
+  "allowedOverrides": []
+}

@@ -1,5 +1,5 @@
 {
-  "title": "尼姆博弈",
+  "title": "异或博弈",
   "track": "evergreen_vibe",
   "lighting": "studio_dark",
   "asset_layers": [
@@ -432,7 +432,7 @@
       "hardCut": true,
       "lines": [
         "1901年哈佛学者【布顿】",
-        "彻底解开尼姆博弈"
+        "彻底解开异或博弈"
       ],
       "readout": "Annals of Mathematics · Vol. 3 · pp. 35–39",
       "stage": "**150.0s** 2.5D 微倾暗铜烫金期刊页 `BoutonArchivalPlate` 优雅浮现，柔金光带缓慢扫过 `Charles L. Bouton` 与论文标题，153.8s 前完全静止锁定整数像素。"
@@ -511,7 +511,7 @@
       "readingEndSec": 182.18,
       "hardCut": false,
       "lines": [
-        "【尼姆博弈】",
+        "【异或博弈】",
         "NIM"
       ],
       "readout": "零态 · a ⊕ b ⊕ c = 0",

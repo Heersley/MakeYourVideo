@@ -1,59 +1,45 @@
-#!/usr/bin/env python
-"""tools/decoder_check.py — 「D3D11VA 硬解 vs 软件解码」原生 NV12 对拍验收工具（v1.1.0）。
+#!/usr/bin/env python.exe
+"""tools/decoder_check.py — 全厂通用「D3D11VA 硬解 vs 软件解码」原生 NV12 对拍验收工具（v1.2.0）。
 
 为什么需要它
 ------------
 软件解码（OpenCV / ffmpeg 默认）能过、Windows 播放端硬解却整块灰屏的事故，只有成片才暴露。
-典型成因是三个非标编码 Hack 叠加：x264 `slice-max-mbs` 微分片 + 全 I 帧 + 阅读窗像素复制，
-导致 D3D11VA 把左半屏解成 RGB(129,129,129) 纯灰矩形，而只跑软解的验收脚本会「漂亮地签字」。
+2026-11-20《黎曼猜想》就是这类事故：x264 `slice-max-mbs` 微分片 + 全 I 帧 + 阅读窗像素复制
+三个非标编码 Hack 叠加，导致本机 D3D11VA 路径把左半屏解成 RGB(129,129,129) 纯灰矩形，
+而旧 verify.py 全程只跑软件解码，漂亮地签了字。
 
-本工具把排雷方法固化成无单期依赖的命令行闸门：
+本工具把那次事故的排雷方法固化成无单期依赖的通用命令行闸门：
 同时开硬解与软解两条解码链，各自输出**原生 NV12**（全程不进 RGB，避免转换舍入噪音），
 逐帧逐样本比对；再对硬解帧测「异常纯灰连通域」占比（左半屏 / 全屏），并顺带做非常规编码审计。
 
-v1.1.0（2K）变更
-----------------
-- 判定口径不再假设 1080×1920 / High@4.2：新增**分辨率 × Level 合法性审计**，
-  按宏块数实测校验 `1440×2560@60` 必须 `High@5.1`、`1080×1920@60` 认证
-  `High@4.2` 或 `High@5.0`（Remotion CLI 无 `--level`，crf 16 下 x264 会自然升到 5.0）；
-- 分辨率、Level、profile 任一不匹配 → 直接 `FAIL`（不再只是告警）；
-- 纯灰连通域的开运算核按实际宽度等比缩放，2K 下自动从 15px 放大到 20px。
-
-判定口径
---------
-PASS 需同时满足：
-  1. D3D11VA 硬解链可用且完整跑完（不是静默回退到软解）；
-  2. 抽样帧数与片长自洽（不多不少）；
-  3. 软硬解逐帧差异在容差内（默认 MAE <= 0.5、极值 <= 8、>16 的离群样本占比 <= 0.2%）；
-  4. 硬解帧「异常纯灰连通域」占比左半屏与全屏均为 `0.0%`。
-     纯灰 = 中性（RGB 极差<=20）+ 中灰带（60<=Y<=150）+ 面积>=1% + **平坦（std<=2）**；
-     解码故障只会填常量色（实测 std=0.0），带渐变/纹理的灰色设计不计入，避免误杀合法版面。
-  5. **编码档位合法**：`1440×2560@60` → `High@5.1`；`1080×1920@60` → `High@4.2` 或 `High@5.0`；
-     宏块/秒不得超过该 Level 上限（4.2 = 522,240；5.0 = 589,824；5.1 = 983,040）。
-非常规编码（码率 bpp 过高 / 每帧切片数过多 / 全 I 帧）默认只告警不判死，`--strict` 可升级为硬失败；
-但**档位不匹配是硬失败**——写错 Level 会让严格解码器直接拒解，不是"风格问题"。
+出厂与诊断
+----------
+严格模式要求软硬解 NV12 零差、全片单切片、两个解码进程正常退出、完整抽样与零异常灰块。
+默认诊断保留像素容差。2K 固定 High@5.1，1080p 历史验证采用 High@4.2。
+输出包含被测文件 SHA-256；单片流程另验音频、版面、事实及定点原始 PNG。
 
 退出码
 ------
-  0 = PASS（可交付）
+  0 = 本项 PASS
   1 = FAIL（硬验收不通过，禁止交付）
   2 = 环境 / 输入错误（参数、文件、FFmpeg、依赖），同样禁止交付
 
 用法
 ----
-  python tools/decoder_check.py --video out/<主题>.mp4 --output out/decoder_check.json
-  python tools/decoder_check.py --video out/x.mp4 --every 3 --output out/dc.json
-  python tools/decoder_check.py --video out/x.mp4 --strict          # 编码告警也算失败
+  python tools\\decoder_check.py --video <主题>.mp4 --output src\\decoder_check.json
+  python tools\\decoder_check.py --video xxx.mp4 --every 3 --output temp\\_work\\dc.json
+  python tools\\decoder_check.py --video xxx.mp4 --strict          # 编码告警也算失败
 
 stdout 只输出一份机器可读 JSON（可管道消费）；进度与诊断走 stderr。
 """
 from __future__ import annotations
 
+from bgm_common import locate_tools as locate_ffmpeg
+import hashlib
+from profile_loader import DEFAULT_PROFILE, load_profile
 import argparse
 import json
-import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -61,29 +47,22 @@ from datetime import datetime
 from pathlib import Path
 
 TOOL_NAME = "decoder_check.py"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 SCHEMA = "decoder_check/1.1"
 
-PINNED_FFMPEG = "9.0.2"     # 开发验证版本（不强制；只用于报告里的 pinnedMatched 提示）
-MIN_FFMPEG_MAJOR = 7        # 低于 7 的构建缺 d3d11 输出格式 / 新 -fps_mode 语法，禁止使用
+PINNED_FFMPEG = "9.0.2"     # 本机锁定版本（Gyan WinGet build）
+MIN_FFMPEG_MAJOR = 9        # 低于 9 的构建缺 d3d11 输出格式 / 新 -fps_mode 语法，禁止使用
 
-# H.264 Level 上限（ITU-T H.264 Table A-1，只列本规范用到的三档）
+# H.264 Level 上限（ITU-T H.264 Table A-1，只列本厂用得到的三档）
 #   maxMBsPerSec = MaxFS × MaxMBPS 的上限；maxFrameMBs = MaxFS
 LEVEL_LIMITS = {
     42: {"label": "4.2", "maxFrameMBs": 8704, "maxMBsPerSec": 522240},
     50: {"label": "5.0", "maxFrameMBs": 22080, "maxMBsPerSec": 589824},
     51: {"label": "5.1", "maxFrameMBs": 36864, "maxMBsPerSec": 983040},
 }
-# 认证组合：分辨率@帧率 → 允许的 Level 集合（v3.3 起 2K 为标准档，1080p 仅历史兼容）
-#
-# 1080×1920@60 放宽为 {4.2, 5.0}：Remotion 4.0.545 的 CLI 没有 `--level` / `--x264-params`
-# 入口，`crf 16` + 5 参考帧下 x264 会自行升到 Level 5.0。两者都是 ITU-T H.264 Table A-1
-# 的合法档位，且 D3D11VA 均可硬解，因此不再因「自动升档」判失败。
-# 2K 档仍然严格要求 5.1：1440×2560@60 是 864,000 宏块/秒，4.2（522,240）与 5.0（589,824）
-# 都装不下，低于 5.1 必须直接 FAIL。
+# 本厂合法组合：分辨率@帧率 → 期望 Level（v3.3 起 2K 为标准档，1080p 仅历史兼容）
 EXPECTED_LEVELS = {
-    (1440, 2560, 60): frozenset({51}),
-    (1080, 1920, 60): frozenset({42, 50}),
+    (1080, 1920, 60): frozenset({42}),
 }
 
 # 事故画像：异常灰块的 Y 带与中性判定（沿用 2026-11-20 排雷口径）
@@ -98,71 +77,6 @@ EXIT_PASS, EXIT_FAIL, EXIT_ENV = 0, 1, 2
 
 # --------------------------------------------------------------------------- #
 # 环境：FFmpeg 定位与版本锁
-# --------------------------------------------------------------------------- #
-def _run_version(exe: str) -> str:
-    try:
-        r = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=20)
-        txt = (r.stdout or "") + (r.stderr or "")
-        return txt.splitlines()[0].strip() if txt.strip() else ""
-    except Exception:
-        return ""
-
-
-def _major(line: str) -> int:
-    m = re.search(r"ffmpeg version (\d+)", line)
-    return int(m.group(1)) if m else 0
-
-
-def locate_ffmpeg(explicit: str | None = None):
-    """只挑 major >= MIN_FFMPEG_MAJOR 的构建，避免误用缺 d3d11 输出格式的旧版本。"""
-    cands: list[Path] = []
-    if explicit:
-        p = Path(explicit)
-        cands.append(p if p.suffix.lower() == ".exe" else p / "ffmpeg.exe")
-    env = os.environ.get("FFMPEG_BIN")
-    if env:
-        p = Path(env)
-        cands.append(p if p.suffix.lower() == ".exe" else p / "ffmpeg.exe")
-    local = os.environ.get("LOCALAPPDATA", "")
-    if local:
-        root = Path(local) / "Microsoft" / "WinGet" / "Packages"
-        for pat in (f"Gyan.FFmpeg*/ffmpeg-{PINNED_FFMPEG}-full_build/bin/ffmpeg.exe",
-                    "Gyan.FFmpeg*/ffmpeg-*/bin/ffmpeg.exe",
-                    "*FFmpeg*/**/bin/ffmpeg.exe"):
-            try:
-                cands += sorted(root.glob(pat))
-            except Exception:
-                pass
-    which = shutil.which("ffmpeg")
-    if which:
-        cands.append(Path(which))
-
-    seen, scored = set(), []
-    for c in cands:
-        key = str(c)
-        if key in seen or not c.exists():
-            continue
-        seen.add(key)
-        line = _run_version(key)
-        mj = _major(line)
-        if mj >= MIN_FFMPEG_MAJOR:
-            scored.append((mj, key, line))
-    if not scored:
-        raise SystemExit(
-            f"[decoder_check] 未找到 FFmpeg {MIN_FFMPEG_MAJOR}+（含 d3d11 输出格式）。\n"
-            "        请用 --ffmpeg 指定 ffmpeg 可执行文件，或设置环境变量 FFMPEG_BIN；\n"
-            "        确认 `ffmpeg -version` 可用，且构建包含 libx264 与 d3d11va。"
-        )
-    scored.sort(key=lambda t: -t[0])
-    _, ff, line = scored[0]
-    probe = str(Path(ff).with_name("ffprobe.exe"))
-    if not Path(probe).exists():
-        probe = shutil.which("ffprobe") or probe
-    return ff, probe, line
-
-
-# --------------------------------------------------------------------------- #
-# 探测
 # --------------------------------------------------------------------------- #
 def probe_media(ffprobe: str, movie: Path) -> dict:
     cmd = [ffprobe, "-v", "error", "-show_streams", "-show_format", "-of", "json", str(movie)]
@@ -265,7 +179,7 @@ def slice_audit(ffmpeg: str, movie: Path, packets: int) -> dict:
     }
 
 
-def codec_conformance(stream: dict, width: int, height: int, fps: float) -> dict:
+def codec_conformance(stream: dict, width: int, height: int, fps: float, policy=None) -> dict:
     """分辨率 × Level × Profile 合法性审计（v1.1 新增，硬判定）。
 
     `1440×2560@60` 在 16×16 宏块网格下是 90×160 = 14,400 宏块/帧、864,000 宏块/秒；
@@ -279,15 +193,19 @@ def codec_conformance(stream: dict, width: int, height: int, fps: float) -> dict
     mb_frame = mb_w * mb_h
     mb_sec = mb_frame * (fps_r or 0)
 
-    expected = EXPECTED_LEVELS.get((width, height, fps_r))
+    video = (policy or load_profile()).hard["video"]
+    if (width,height,fps) == (video["width"],video["height"],video["fps"]):
+        expected = {int(round(float(video["level"])*10))}
+    else:
+        expected = EXPECTED_LEVELS.get((width, height, fps))
     lim = LEVEL_LIMITS.get(level)
     notes: list[str] = []
 
-    profile_ok = profile.lower() in ("high", "high 4:4:4 predictive", "high 10")
+    profile_ok = profile.lower() == video["profile"].lower()
     if not profile_ok:
-        notes.append(f"profile 为 {profile or '空'}，只认证 High")
+        notes.append(f"profile 为 {profile or '空'}，本厂只认证 High")
     if expected is None:
-        notes.append(f"不在认证规格内（{width}×{height}@{fps_r}）："
+        notes.append(f"不在本厂认证规格内（{width}×{height}@{fps_r}）："
                      "标准档应为 1440×2560@60")
     elif level not in expected:
         allowed = " / ".join(
@@ -295,7 +213,7 @@ def codec_conformance(stream: dict, width: int, height: int, fps: float) -> dict
         notes.append(f"Level 写错：{width}×{height}@{fps_r} 只认证 {allowed}，"
                      f"实际 {level_label(level)}")
     if lim is None:
-        notes.append(f"未知 Level 编码 {level}（认证 4.2 / 5.0 / 5.1）")
+        notes.append(f"未知 Level 编码 {level}（本厂认证 4.2 / 5.0 / 5.1）")
     else:
         if mb_frame > lim["maxFrameMBs"]:
             notes.append(f"帧宏块数 {mb_frame} 超过 Level {lim['label']} 上限 "
@@ -327,7 +245,7 @@ def level_label(code: int) -> str:
 
 
 def encoding_audit(ffmpeg: str, ffprobe: str, movie: Path, stream: dict, audit_frames: int,
-                   bpp_warn: float, slices_warn: int, iframe_warn: float) -> dict:
+                   bpp_warn: float, slices_warn: int, iframe_warn: float, policy=None) -> dict:
     w = int(stream.get("width") or 0)
     h = int(stream.get("height") or 0)
     fps = _fraction(stream.get("r_frame_rate")) or _fraction(stream.get("avg_frame_rate")) or 0.0
@@ -355,13 +273,14 @@ def encoding_audit(ffmpeg: str, ffprobe: str, movie: Path, stream: dict, audit_f
 
     codec = (stream.get("codec_name") or "").lower()
     pix = (stream.get("pix_fmt") or "")
-    if codec and codec != "h264":
+    video = (policy or load_profile()).hard["video"]
+    if codec and codec != video["codec"]:
         warnings.append(f"编码并非 H.264（{codec}）：全平台硬解兼容红线只认证 "
-                        "H.264 High@5.1（2K）/ High@4.2 或 5.0（1080p）+ yuv420p")
-    if pix and pix != "yuv420p":
+                        "H.264 High@5.1（2K）/ High@4.2（1080p）+ yuv420p")
+    if pix and pix != video["pixFmt"]:
         warnings.append(f"像素格式并非 yuv420p（{pix}）：全平台兼容基线为 yuv420p")
 
-    conf = codec_conformance(stream, w, h, fps)
+    conf = codec_conformance(stream, w, h, fps,policy)
     warnings.extend(conf["notes"])
 
     return {
@@ -587,11 +506,11 @@ _fps_hint = 0.0
 # --------------------------------------------------------------------------- #
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="D3D11VA 硬解 vs 软件解码 原生 NV12 对拍验收（通用，无单期依赖）",
+        description="D3D11VA 硬解 vs 软件解码 原生 NV12 对拍验收（全厂通用，无单期依赖）",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video_pos", nargs="?", type=Path, help=argparse.SUPPRESS)
     ap.add_argument("--video", type=Path, help="待验收的 mp4（必填）")
-    ap.add_argument("--every", type=int, default=6, help="抽样间隔（帧）；60fps 下 6 ≈ 10 帧/秒，默认 6")
+    ap.add_argument("--every", type=int, default=None, help="抽样间隔（帧）；60fps 下 6 ≈ 10 帧/秒，默认 6")
     ap.add_argument("--output", type=Path, help="把 JSON 报告另存到该路径")
     ap.add_argument("--ffmpeg", help="显式指定 FFmpeg 9.x 的 ffmpeg.exe（默认自动定位 WinGet 9.0.2）")
     ap.add_argument("--threads", type=int, default=0, help="解码线程数，0=FFmpeg 自动（默认）")
@@ -607,7 +526,18 @@ def main(argv=None) -> int:
     ap.add_argument("--iframe-warn", type=float, default=0.25, help="关键帧占比告警阈值，默认 0.25")
     ap.add_argument("--strict", action="store_true", help="把编码告警升级为硬失败")
     ap.add_argument("--quiet", action="store_true", help="不打印进度到 stderr")
+    ap.add_argument("--profile",default=DEFAULT_PROFILE)
     args = ap.parse_args(argv)
+    policy = load_profile(args.profile)
+    limits = policy.hard["decoder"]
+    if args.strict:
+        if args.every not in (None, limits["sampleEvery"]):
+            ap.error("--strict 的采样间隔必须与所选制作档案一致")
+        for name in ("gray_min_area_pct", "bpp_warn", "iframe_warn", "max_outlier_share"):
+            if getattr(args, name) != ap.get_default(name):
+                ap.error("--strict 要求使用标准诊断阈值: " + name)
+    if args.every is None:
+        args.every = limits["sampleEvery"]
 
     for s in (sys.stdout, sys.stderr):
         try:
@@ -621,7 +551,7 @@ def main(argv=None) -> int:
         import cv2                                          # noqa: F811
     except Exception as exc:                                # pragma: no cover
         print(f"[decoder_check] 缺少依赖 numpy / opencv-python：{exc}\n"
-              "        请先 pip install -r requirements.txt。", file=sys.stderr)
+              "        请用 python 运行（系统 3.13 无这些包）。", file=sys.stderr)
         return EXIT_ENV
 
     movie = args.video or args.video_pos
@@ -660,8 +590,13 @@ def main(argv=None) -> int:
         print(f"[decoder_check] {movie.name}  {width}x{height}@{fps:g}fps  {nb} 帧  "
               f"抽样 every={args.every} → 预期 {expected} 帧", file=sys.stderr, flush=True)
 
+    if args.strict:
+        args.max_mae, args.max_peak = limits["maxMae"], limits["maxPeak"]
+        args.audit_frames = nb
+        args.slices_warn = limits["slicesPerFrame"]
+
     encoding = encoding_audit(ffmpeg, ffprobe, movie, v, args.audit_frames,
-                              args.bpp_warn, args.slices_warn, args.iframe_warn)
+                              args.bpp_warn, args.slices_warn, args.iframe_warn, policy)
 
     hard_failed_reason = None
     cmp: dict = {}
@@ -686,7 +621,8 @@ def main(argv=None) -> int:
     hw_ok = "error" not in cmp and cmp.get("decoderExitCodes", {}).get("hardware") == 0
     frames_ok = bool(expected) and cmp.get("framesCompared") == expected
     pixel_ok = bool(cmp.get("badFrameCount") == 0)
-    gray_ok = (cmp.get("grayLeftHalfMaxPct") == 0.0 and cmp.get("grayFullFrameMaxPct") == 0.0)
+    gray_ok = all(0 <= cmp.get(key, float("inf")) <= limits["maxGrayPct"]
+                  for key in ("grayLeftHalfMaxPct", "grayFullFrameMaxPct"))
     encoding_ok = encoding["status"] == "ok"
     codec_ok = bool(encoding.get("conformance", {}).get("compliant"))
 
@@ -698,6 +634,16 @@ def main(argv=None) -> int:
         "codecConformance": codec_ok,
     }
     if args.strict:
+        slices = encoding["sliceAudit"]
+        checks["fullSingleSliceAudit"] = bool(nb and slices.get("framesAudited") == nb
+                                              and slices.get("slicesPerFrameMax") == limits["slicesPerFrame"]
+                                              and encoding["auditedPackets"] == nb)
+        checks["softwareDecode"] = cmp.get("decoderExitCodes", {}).get("software") == 0
+        for key in ("fullSingleSliceAudit", "softwareDecode"):
+            if not checks[key]:
+                encoding["warnings"].append(key)
+        encoding_ok = encoding_ok and checks["fullSingleSliceAudit"] and checks["softwareDecode"]
+        encoding["status"] = "ok" if encoding_ok else "warn"
         checks["encodingStandard"] = bool(encoding_ok)
 
     reasons = []
@@ -711,7 +657,7 @@ def main(argv=None) -> int:
         reasons.append(f"软硬解像素不匹配：{cmp.get('badFrameCount')} 帧越界（阈值 MAE<={args.max_mae} / peak<={args.max_peak}）")
     if not gray_ok:
         reasons.append(f"异常纯灰连通域：左半屏 {cmp.get('grayLeftHalfMaxPct')}% / "
-                       f"全屏 {cmp.get('grayFullFrameMaxPct')}%（必须 0.0%）")
+                       f"全屏 {cmp.get('grayFullFrameMaxPct')}%（上限 {limits['maxGrayPct']}%）")
     if not codec_ok:
         reasons.append("编码档位不合规：" + "；".join(encoding.get("conformance", {}).get("notes") or []))
     if args.strict and not encoding_ok:
@@ -720,7 +666,12 @@ def main(argv=None) -> int:
     passed = all(checks.values())
     passed = passed and not reasons
 
+    with movie.open("rb") as source:
+        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    audio_stream = next((s for s in meta["streams"] if s.get("codec_type") == "audio"), {})
     report = {
+        **policy.stamp,
+        "strict": args.strict,
         "schema": SCHEMA,
         "tool": {"name": TOOL_NAME, "version": TOOL_VERSION,
                  "python": sys.version.split()[0], "numpy": np.__version__, "opencv": cv2.__version__},
@@ -728,11 +679,13 @@ def main(argv=None) -> int:
         "ffmpeg": {"path": ffmpeg, "ffprobe": ffprobe, "version": ff_line,
                    "pinned": PINNED_FFMPEG,
                    "pinnedMatched": PINNED_FFMPEG in ff_line},
-        "input": {"path": str(movie), "sizeBytes": movie.stat().st_size},
+        "input": {"sha256": digest, "path": str(movie), "sizeBytes": movie.stat().st_size},
         "stream": {"codec": v.get("codec_name"), "profile": v.get("profile"),
                    "level": v.get("level"),
                    "levelLabel": level_label(int(v.get("level") or 0)),
-                   "pixFmt": v.get("pix_fmt"),
+                   "pixFmt": v.get("pix_fmt"), "colorSpace": v.get("color_space"),
+                   "audioChannels": audio_stream.get("channels"),
+                   "audioSampleRate": int(audio_stream.get("sample_rate") or 0),
                    "width": width, "height": height, "fps": round(fps, 4),
                    "nbFrames": nb, "durationSec": round(nb / fps, 3) if (nb and fps) else None,
                    "videoBitrateBps": int(v["bit_rate"]) if str(v.get("bit_rate") or "").isdigit() else None,
@@ -744,7 +697,7 @@ def main(argv=None) -> int:
         "hardware": {"accel": "d3d11va", "outputFormat": "d3d11",
                      "download": "hwdownload,format=nv12", "available": bool(hw_ok)},
         "tolerances": {"maxFrameMAE": args.max_mae, "maxSampleDelta": args.max_peak,
-                       "maxOutlierShare": args.max_outlier_share, "grayLimitPct": 0.0,
+                       "maxOutlierShare": args.max_outlier_share, "grayLimitPct": limits["maxGrayPct"],
                        "grayMinAreaPct": args.gray_min_area_pct, "grayFlatStdMax": 2.0,
                        "grayLumaBand": [GRAY_Y_MIN, GRAY_Y_MAX]},
         "comparison": cmp,

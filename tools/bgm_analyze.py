@@ -1,10 +1,10 @@
-"""bgm_analyze.py — 测拍与卡点档案生成器（纯 numpy + FFmpeg，零外部 API）。
+"""bgm_analyze.py — 默认单曲测拍卡点器（纯 numpy + FFmpeg 9.0.2，零外部 API）。
 
 用法：
-  python tools/bgm_analyze.py <audio_path> [--out <json_path>]
-      -> 在音频同目录生成 <stem>.beats.json
-  python tools/bgm_analyze.py
+  python tools\\bgm_analyze.py
       -> 自动探测 assets/bgm/bgm.{m4a,mp3,wav,flac}
+  python tools\\bgm_analyze.py <audio_path> [--out <json_path>]
+      -> 在音频同目录生成 <stem>.beats.json（默认单曲即 bgm.beats.json）
 
 算法（全部 numpy，无 librosa/scipy 依赖）：
   - FFmpeg 解码 22050Hz 单声道 f32 PCM
@@ -17,6 +17,9 @@
 """
 from __future__ import annotations
 
+from bgm_common import sha256_file
+import os
+import tempfile
 import argparse
 import json
 import sys
@@ -352,6 +355,7 @@ def analyze(audio_path, out_json=None, ffmpeg=None, print_summary=True) -> dict:
     result = {
         "file": str(ap),
         "file_name": ap.name,
+        "source_sha256": sha256_file(ap),
         "duration_sec": round(duration, 3),
         "bpm": bpm,
         "bpm_score": bpm_score,
@@ -380,8 +384,9 @@ def analyze(audio_path, out_json=None, ffmpeg=None, print_summary=True) -> dict:
         },
     }
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(result, ensure_ascii=False, indent=2),
-                   encoding="utf-8")
+    with tempfile.NamedTemporaryFile(dir=out.parent,mode="w",encoding="utf-8",delete=False) as f:
+        json.dump(result,f,ensure_ascii=False,indent=2)
+    os.replace(f.name,out)
 
     if print_summary:
         _print_summary(result, out, ver)
@@ -429,11 +434,11 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(
-        description="测拍与卡点档案生成器（纯 numpy + FFmpeg）")
+        description="默认单曲测拍卡点器（纯 numpy + FFmpeg 9.0.2）")
     p.add_argument("audio", nargs="?", default=None,
                    help="音频路径；不传则自动探测 assets/bgm/bgm.*")
     p.add_argument("--out", default=None, help="输出 beats.json 路径（默认同目录 <stem>.beats.json）")
-    p.add_argument("--ffmpeg", default=None, help="显式指定 ffmpeg 可执行文件")
+    p.add_argument("--ffmpeg", default=None, help="显式指定 9.0.2 的 ffmpeg.exe")
     a = p.parse_args(argv)
 
     if a.audio:
@@ -448,10 +453,10 @@ def main(argv=None):
                 break
         if audio is None:
             raise SystemExit(
-                "[BGM] 未找到默认槽位。请把音频放到：\n"
-                f"        {d}/bgm.m4a"
+                "[BGM] 未找到默认单曲。请把音频放到：\n"
+                f"        {d}\\bgm.m4a"
                 "   （自动探测 .m4a -> .mp3 -> .wav -> .flac）\n"
-                "        也可直接传参：python tools/bgm_analyze.py <audio_path>"
+                "        也可直接传参：tools\\bgm_analyze.py <audio_path>"
             )
     analyze(audio, a.out, a.ffmpeg, print_summary=True)
     return 0

@@ -17,7 +17,7 @@ from bounds import PROJECT, inspect_full_layout, inspect_key_details, launch_chr
 from preview_qc import EPISODE, SOURCE, contact_sheet_font, pinned_tools, probe_media, verify_locked_sources, write_json
 
 FPS, COUNT, SIZE = 60, 11040, (1080, 1920)
-CLIP = "尼姆博弈_cinema_clean.mp4"
+CLIP = "异或博弈_cinema_clean.mp4"
 MOTION_THRESHOLD = .15
 EXPECTED_CUTS = [34.8, 83.8, 142.0, 148.8]
 DARK_RANGE = (84, 95)

@@ -10,7 +10,7 @@ export const chineseGlyph = /[\p{Script=Han}、，。：！？（）【】\u3000
 
 const faces = [
   {family: chinese, weight: 400, file: 'ChillJinshuSongRegular.woff', format: 'woff', sample: '石子后手零局势'},
-  {family: chinese, weight: 700, file: 'ChillJinshuSongBold.woff', format: 'woff', sample: '尼姆博弈最后一颗'},
+  {family: chinese, weight: 700, file: 'ChillJinshuSongBold.woff', format: 'woff', sample: '异或博弈最后一颗'},
   {family: western, weight: 400, file: 'SourceSerif4-Regular.ttf.woff2', format: 'woff2', sample: 'NIM 0123456789'},
   {family: western, weight: 600, file: 'SourceSerif4-Semibold.ttf.woff2', format: 'woff2', sample: 'NIM 0123456789'},
   {family: mono, weight: 400, file: 'JetBrainsMono-Regular.woff2', format: 'woff2', sample: 'XOR 0123456789 ⇒⊕≠'},

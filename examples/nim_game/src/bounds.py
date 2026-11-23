@@ -123,8 +123,8 @@ CHINESE = "ChillJinshuSong"
 SERIF = "Source Serif 4"
 MONO = "JetBrains Mono"
 FACES = (
-    (CHINESE, "400", "尼姆博弈"),
-    (CHINESE, "700", "尼姆博弈"),
+    (CHINESE, "400", "异或博弈"),
+    (CHINESE, "700", "异或博弈"),
     (SERIF, "400", "NIM 1901"),
     (SERIF, "600", "NIM 1901"),
     (MONO, "400", "XOR 0123456789"),

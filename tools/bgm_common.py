@@ -1,8 +1,8 @@
 """BGM 工具链公共模块。
 
 职责：
-  1. 定位可用的 **FFmpeg 7+**（开发验证版本 9.0.2），优先显式参数与 FFMPEG_BIN，
-     其次 PATH；避免误用缺 libx264 / d3d11 的旧构建；
+  1. 只定位本机 Gyan/WinGet **FFmpeg 9.0.2**，绝不误用 PATH 里的
+     2013 版 N-55702；
   2. 用 FFmpeg 把任意 .mp3/.m4a/.wav/.flac 解码为交错 f32le PCM；
   3. ffprobe 时长探测、仓库根目录与默认单曲槽位定位。
 
@@ -10,15 +10,16 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
-MIN_MAJOR = 7
 SUPPORTED_EXT = (".mp3", ".m4a", ".wav", ".flac")
 DEFAULT_STEM = "bgm"
+DEFAULT_BGM_GAIN = -13.5
 DEFAULT_EXT_ORDER = (".m4a", ".mp3", ".wav", ".flac")
 
 
@@ -32,56 +33,32 @@ def version_line(exe: str) -> str:
         return ""
 
 
-def major_of(line: str) -> int:
-    m = re.search(r"ffmpeg version (\d+)", line)
-    return int(m.group(1)) if m else 0
+def sha256_file(path: Path) -> str:
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
 
 
 def locate_tools(explicit: str | None = None):
-    """返回 (ffmpeg, ffprobe, version_line)。只接受 major>=9 的 9.0.2 家族。"""
-    cands: list[Path] = []
-    if explicit:
-        p = Path(explicit)
-        cands.append(p if p.suffix.lower() == ".exe" else p / "ffmpeg.exe")
-    env = os.environ.get("FFMPEG_BIN")
-    if env:
-        p = Path(env)
-        cands.append(p if p.suffix.lower() == ".exe" else p / "ffmpeg.exe")
-    local = os.environ.get("LOCALAPPDATA", "")
-    if local:
-        root = Path(local) / "Microsoft" / "WinGet" / "Packages"
-        for pat in ("Gyan.FFmpeg*/ffmpeg-*/bin/ffmpeg.exe",
-                    "*FFmpeg*/**/bin/ffmpeg.exe"):
-            try:
-                cands += sorted(root.glob(pat))
-            except Exception:
-                pass
-    which = shutil.which("ffmpeg")
-    if which:
-        cands.append(Path(which))
-
-    seen, scored = set(), []
-    for c in cands:
-        cs = str(c)
-        if cs in seen or not c.exists():
-            continue
-        seen.add(cs)
-        line = version_line(cs)
-        mj = major_of(line)
-        if mj >= MIN_MAJOR:
-            scored.append((mj, cs, line))
-    if not scored:
-        raise SystemExit(
-            "[FFmpeg] 未找到 FFmpeg 7+（含 libx264）。\n"
-            "        请用 --ffmpeg 指定 ffmpeg 可执行文件，"
-            "或设置环境变量 FFMPEG_BIN；确认 `ffmpeg -version` 可用。"
-        )
-    scored.sort(key=lambda t: -t[0])
-    _, ff, line = scored[0]
-    probe_path = str(Path(ff).with_name("ffprobe.exe"))
-    if not Path(probe_path).exists():
-        probe_path = shutil.which("ffprobe") or probe_path
-    return ff, probe_path, line
+    """Select matching ffmpeg/ffprobe binaries from one pinned installation."""
+    from profile_loader import environment
+    setting = explicit or environment()["ffmpegDir"] or os.environ.get("FFMPEG_BIN")
+    if setting:
+        path = Path(setting)
+        candidates = [path if path.suffix.lower() == ".exe" else path / "ffmpeg.exe"]
+    else:
+        packages = Path(os.environ.get("LOCALAPPDATA", ".")) / "Microsoft/WinGet/Packages"
+        candidates = sorted(packages.glob("Gyan.FFmpeg*/ffmpeg-9.0.2-full_build/bin/ffmpeg.exe"))
+        fallback = shutil.which("ffmpeg")
+        if fallback:
+            candidates.append(Path(fallback))
+    for path in candidates:
+        probe = path.with_name("ffprobe.exe")
+        if path.is_file() and probe.is_file():
+            ff, fp = version_line(str(path)), version_line(str(probe))
+            if all(re.match(r"^ff(?:mpeg|probe) version 9[.]0[.]2(?:[-+_ ]|$)", v)
+                   for v in (ff, fp)):
+                return str(path.resolve()), str(probe.resolve()), ff
+    raise SystemExit(f"FFmpeg/ffprobe 9.0.2 pair required, searched: {candidates}")
 
 
 def decode_f32(ffmpeg: str, media, sr: int = 22050, channels: int = 1,
@@ -155,9 +132,9 @@ def resolve_default_bgm(explicit: str | None = None) -> Path:
         if p.exists():
             return p
     raise SystemExit(
-        "[BGM] 未找到默认槽位 bgm.*。请把音频放到：\n"
-        f"        {d}/bgm.m4a"
+        "[BGM] 未找到默认单曲 bgm。请把音频放到：\n"
+        f"        {d}\\bgm.m4a"
         "   （自动探测顺序 .m4a -> .mp3 -> .wav -> .flac）\n"
-        "        放好后先跑一次：python tools/bgm_analyze.py\n"
+        "        放好后先跑一次：python tools\\bgm_analyze.py\n"
         "        或本次用 --bgm <音频路径> 显式指定。"
     )

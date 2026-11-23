@@ -1,31 +1,33 @@
-"""mix_bgm.py — 交付自动混音（卡 Drop + 前段铺底 + 断层自检，视频流零损直通）。
+"""mix_bgm.py — evergreen_vibe 出厂自动混音（默认单曲 bgm，视频流零损直通）。
 
 用法（交付阶段 · 单成片）：
-  python tools/mix_bgm.py --video out/<中间片>.mp4 \
-      --bgm assets/bgm/<track>.m4a \
-      --sfx examples/nim_game/src/sfx_mix.wav \
-      --output "output/<slug>/<主题>.mp4" \
-      --align-climax 122.0 --sfx-out "output/<slug>/src/sfx_only.wav"
+  python tools\\mix_bgm.py --video <渲染中间片>.mp4 \
+      --sfx <微音效母带>.wav \
+      --output "output\\evergreen_vibe\\<日期>\\<编号>_<主题>\\<主题>.mp4" \
+      --align-climax 122.0 --sfx-out "…\\src\\sfx_only.wav"
 
 用法（阶段 1 快审片 · 带 BGM 合成 30 秒）：
-  python tools/mix_bgm.py --video out/<stage1>.mp4 \
-      --preview-duration 30 --align-climax 122.0 --output out/<stage1>_bgm.mp4
+  python tools\\mix_bgm.py --video <stage1>.mp4 \
+      --preview-duration 30 --align-climax 122.0 --output <stage1>_bgm.mp4
 
 微音效轨来源（优先级从高到低）：
   1. `--sfx <wav>`：显式指定微音效母带，按输入视频实际时长裁剪/补零对齐；
   2. 输入视频自带音轨：直接从渲染中间片无损提取；
   3. 都没有：按静音基线处理（`--sfx-out` 会同时给出近似静音的 warning）。
 
-不传 --bgm 时自动锁定 assets/bgm/bgm.* 与其 .beats.json；
+不传 --bgm 时自动锁定 assets/bgm/bgm.* 与 bgm.beats.json；
 节拍档案缺失会先自动跑一次 bgm_analyze.py；音频未放入则打印路径并报错退出。
 
 处理链（音频全在 numpy 采样级完成，FFmpeg 只负责一次解码 + 一次封装）：
   1. 精确卡点：offset = align_climax - drops[idx].t，误差 0.000s（≤0.03s）
   2. 正偏移前段铺底（v1.1 新增，根治长片前段无 BGM）：
-     offset > 0 时不再把 [0, offset) 留白，而是从同曲里挑一段**整数小节（4/8/16 bars）**
+     offset > 0 时不再把 [0, offset) 留白，而是从同曲里挑一段**整数小节（16/8/4/2 bars）**
      的最低能量乐段，做等功率交叉淡化循环铺满前段；音量按主高潮段实测 RMS 压低 5 dB
      （可调 4–6 dB），可加温和低通；0.0s 起 0.4s 柔和淡入，末尾 0.30s 交叉淡化
      精准落回主轨第 0 采样（主轨随即进入 Drop）。
+     候选小节数按 [16,8,4,2] 逐级降档并夹紧到「连续可用小节最长段」；短曲（如 35s
+     测试曲）在 offset 很大时不再直接 SystemExit，而是逐级放宽曲尾/Drop 保护并打
+     `[fill][warn] 铺底降档` warning，报告里记 `degraded / strategy / max_usable_run`。
   3. 整小节 bar_sec 循环体 + 1.5s 等功率 cos/sin 交叉淡化；片头柔和淡入、
      片尾 --fade-out（默认 2.5s）对数淡出至静音
   4. 反转落点前 0.45s 余弦洼谷（--duck-db），落点顺滑回弹
@@ -36,6 +38,8 @@
 """
 from __future__ import annotations
 
+from bgm_common import DEFAULT_BGM_GAIN, sha256_file
+from profile_loader import DEFAULT_PROFILE, load_profile
 import argparse
 import json
 import math
@@ -62,7 +66,7 @@ LOOP_FADE_SEC = 1.5
 DUCK_PRE_SEC = 0.45
 DUCK_RAMP_SEC = 0.15
 DUCK_RELEASE_SEC = 0.35
-TARGET_TP_DBTP = -1.0
+
 LIMIT_START_DBFS = -1.0
 
 # --- 前段铺底（v1.1） -------------------------------------------------------
@@ -73,9 +77,7 @@ FILL_BELOW_CLIMAX_DB = 5.0     # 相对主高潮段压低 5 dB（规范 4–6 dB
 FILL_LOWPASS_HZ = 2400.0       # 温和低通（0 = 关闭）
 
 # --- 断层自检（v1.1） -------------------------------------------------------
-GAP_WINDOW_START_SEC = 0.5
-GAP_WINDOW_END_MARGIN_SEC = 2.0
-GAP_MAX_SEC = 1.5
+
 GAP_HOP_SEC = 0.05
 GAP_WIN_SEC = 0.10
 
@@ -85,10 +87,9 @@ GAP_WIN_SEC = 0.10
 # --------------------------------------------------------------------------
 def ensure_beats(bgm: Path, ffmpeg: str) -> tuple[dict, Path]:
     p = bgm.with_suffix(".beats.json")
-    if not p.exists():
-        print(f"[beats] 节拍档案不存在，自动先跑一次 bgm_analyze.py：{p.name}")
-        bgm_analyze.analyze(bgm, out_json=p, ffmpeg=ffmpeg, print_summary=False)
-    d = json.loads(p.read_text(encoding="utf-8"))
+    d = json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {}
+    if d.get("source_sha256") != sha256_file(bgm):
+        d = bgm_analyze.analyze(bgm, out_json=p, ffmpeg=ffmpeg, print_summary=False)
     if not d.get("bar_times") or not d.get("bpm"):
         raise SystemExit(f"[beats] 节拍档案字段不完整：{p}")
     return d, p
@@ -104,8 +105,7 @@ def extract_duck_points(video_beats: Path | None, video: Path):
         return [], None
     path = Path(path).resolve()
     if not path.exists():
-        print(f"[duck] --beats 指定的文件不存在：{path}", file=sys.stderr)
-        return [], None
+        raise SystemExit(f"[duck] --beats 指定的文件不存在：{path}")
     d = json.loads(path.read_text(encoding="utf-8"))
     pts = []
     for b in d.get("beats", []):
@@ -458,15 +458,20 @@ def fit_len(x: np.ndarray, v_samples: int):
 # BGM 断层自检
 # --------------------------------------------------------------------------
 def detect_bgm_gaps(track: np.ndarray, gain_db: float, total_sec: float,
-                    start_sec: float = GAP_WINDOW_START_SEC,
-                    end_margin: float = GAP_WINDOW_END_MARGIN_SEC,
-                    max_gap: float = GAP_MAX_SEC) -> dict:
+                    start_sec: float | None = None,
+                    end_margin: float | None = None,
+                    max_gap: float | None = None) -> dict:
     """在 [start, total-end_margin] 内找 > max_gap 的异常空白（低于铺底阈值）。
 
     阈值取「该区间 BGM 短时 RMS 中位数 − 25 dB」，并夹在 [-60, -32] dBFS；
     衡量的是「相对铺底的异常掉底」，不会把整体偏轻的段落误判成断层。
     高潮前刻意做的 0.4–0.6s 动态洼谷远短于 1.5s，不会触发。
     """
+    if None in (start_sec,end_margin,max_gap):
+        defaults = load_profile().hard["audio"]
+        start_sec = defaults["gapStartSec"] if start_sec is None else start_sec
+        end_margin = defaults["gapEndMarginSec"] if end_margin is None else end_margin
+        max_gap = defaults["gapMaxSec"] if max_gap is None else max_gap
     mono = track.mean(axis=1) * float(10.0 ** (gain_db / 20.0))
     hop = max(1, int(round(GAP_HOP_SEC * SR)))
     win = max(hop, int(round(GAP_WIN_SEC * SR)))
@@ -552,13 +557,26 @@ def write_wav_16(path: Path, x: np.ndarray, sr: int, channels: int):
         w.setsampwidth(2)
         w.setframerate(sr)
         w.writeframes(pcm.tobytes())
+    return 20 * math.log10(max(float(np.abs(pcm.astype(np.int32)).max()) / 32768, 1e-12))
 
 
 # --------------------------------------------------------------------------
 # FFmpeg 封装 + ebur128 实测
 # --------------------------------------------------------------------------
+def final_audio_failures(audio, lufs, tp, exported_peak, a_dur, v_dur, climax_err):
+    return [key for key, ok in {
+        "integrated_lufs": audio["lufs"][0] <= lufs <= audio["lufs"][1],
+        "true_peak_dbtp": tp <= audio["truePeakMax"],
+        "exported_sfx_dbfs": exported_peak is not None and audio["sfxPeak"][0] <= exported_peak <= audio["sfxPeak"][1],
+        "av_duration": abs(a_dur - v_dur) <= audio["avDurationToleranceSec"],
+        "climax_error_sec": climax_err is not None and climax_err <= audio["climaxErrorSec"],
+    }.items() if not ok]
+
+
 def mux(ffmpeg: str, video: Path, raw_pcm: Path, out: Path, limit_dbfs: float,
-        preview_duration: float | None = None):
+        preview_duration: float | None = None, profile=None):
+    profile = profile or load_profile()
+    audio = profile.hard["audio"]
     limit = 10.0 ** (limit_dbfs / 20.0)
     cmd = [ffmpeg, "-y", "-v", "error",
            "-i", str(video),
@@ -566,10 +584,10 @@ def mux(ffmpeg: str, video: Path, raw_pcm: Path, out: Path, limit_dbfs: float,
            "-map", "0:v:0", "-map", "1:a:0",
            "-c:v", "copy",
            "-af", f"alimiter=limit={limit:.9f}:level=false:attack=5:release=50",
-           "-c:a", "aac", "-b:a", "256k", "-ar", str(SR), "-ac", "2"]
+           "-c:a", audio["codec"], "-b:a", audio["bitrate"], "-ar", str(audio["sampleRate"]), "-ac", str(audio["channels"])]
     if preview_duration is not None and preview_duration > 0:
         cmd += ["-t", f"{preview_duration:.3f}"]
-    cmd += ["-movflags", "+faststart", str(out)]
+    cmd += ["-movflags", profile.hard["video"]["movflags"], str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     if r.returncode != 0:
         raise SystemExit(f"[FFmpeg] 封装失败（退出码 {r.returncode}）：\n"
@@ -609,9 +627,9 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(
-        description="交付自动混音（单成片 + 前段铺底 + 断层自检）")
+        description="evergreen_vibe 出厂自动混音（单成片 + 前段铺底 + 断层自检）")
     p.add_argument("--video", required=True, help="已验收的渲染中间片 / 阶段 1 快审片")
-    p.add_argument("--bgm", default=None, help="配乐路径；不传则自动锁定 assets/bgm/bgm.*")
+    p.add_argument("--bgm", default=None, help="默认自动锁定 assets/bgm/bgm.*")
     p.add_argument("--beats", default=None, help="视频分幕 beats.json（读 hardCut/duck 反转点）")
     p.add_argument("--align-climax", type=float, default=None, help="画面高潮秒数，如 122.0")
     p.add_argument("--bgm-drop-index", type=int, default=0,
@@ -626,7 +644,8 @@ def main(argv=None):
                    help=f"前段铺底温和低通 Hz（默认 {FILL_LOWPASS_HZ:.0f}；0=关闭）")
     p.add_argument("--fill-below-db", type=float, default=FILL_BELOW_CLIMAX_DB,
                    help="铺底相对主高潮段压低 dB（默认 5，规范区间 4–6）")
-    p.add_argument("--bgm-gain", type=float, default=-13.5, help="BGM 相对增益 dB（默认 -13.5）")
+    p.add_argument("--bgm-gain", type=float, default=DEFAULT_BGM_GAIN,
+                   help=f"BGM 相对增益 dB（默认 {DEFAULT_BGM_GAIN}）")
     p.add_argument("--duck-db", type=float, default=-4.0, help="洼谷压低 dB（默认 -4.0）")
     p.add_argument("--duck-at", default=None, help="手动反转点秒数，逗号分隔，优先于 --beats")
     p.add_argument("--fade-out", type=float, default=2.5, help="片尾对数淡出秒数（默认 2.5）")
@@ -635,15 +654,38 @@ def main(argv=None):
     p.add_argument("--preview-duration", type=float, default=None,
                    help="只混前 N 秒（阶段 1 快审片带 BGM）")
     p.add_argument("--sfx", default=None,
-                   help="微音效母带 WAV（如 examples/nim_game/src/sfx_mix.wav）；"
-                        "传入则按视频时长裁剪对齐后混入，不再依赖输入视频自带音轨")
+                   help="微音效母带 WAV；传入则按视频时长裁剪对齐后混入，"
+                        "不再依赖输入视频自带音轨（不传时行为与旧版完全一致）")
     p.add_argument("--sfx-out", default=None,
                    help="导出轻量纯微音效母带（如 src/sfx_only.wav）")
     p.add_argument("--sfx-sr", type=int, default=32000, help="sfx_only.wav 采样率（默认 32000）")
-    p.add_argument("--sfx-channels", type=int, choices=(1, 2), default=1,
-                   help="sfx_only.wav 声道数（默认 1）")
+    p.add_argument("--sfx-channels", type=int, choices=(1, 2),
+                   help="sfx_only.wav 声道数（默认跟随输入单声道或立体声）")
     p.add_argument("--ffmpeg", default=None, help="显式指定 9.0.2 的 ffmpeg.exe")
+    p.add_argument("--diagnostic", action="store_true", help="实验模式，仅生成诊断输出")
+    p.add_argument("--license-note", help="自选配乐实际授权说明")
+    p.add_argument("--profile",default=DEFAULT_PROFILE)
     a = p.parse_args(argv)
+    if not math.isfinite(a.bgm_gain):
+        p.error("--bgm-gain must be finite")
+    profile = load_profile(a.profile)
+    if a.preview_duration is not None and (not math.isfinite(a.preview_duration) or a.preview_duration <= 0):
+        p.error("--preview-duration must be positive")
+    final = a.preview_duration is None and not a.diagnostic
+    if final and (not a.out or not a.sfx_out or not a.beats):
+        p.error("正式混音需要 --out、--sfx-out 和 --beats；实验请用 --diagnostic")
+    if a.beats:
+        timeline = json.loads(Path(a.beats).read_text(encoding="utf-8-sig"))
+        climax = timeline.get("alignClimaxSec")
+        if climax is not None:
+            if a.align_climax is not None and a.align_climax != climax:
+                p.error("--align-climax 与 beats.json 不一致")
+            a.align_climax = climax
+    if final and (a.align_climax is None or a.bgm_offset is not None):
+        p.error("正式混音需要有效的高潮时间和节拍对齐")
+    if final and a.bgm and not a.license_note:
+        p.error("自选配乐需要 --license-note")
+
 
     if a.preroll_bars is not None and a.fill_bars == 0:
         a.fill_bars = int(a.preroll_bars)
@@ -676,6 +718,25 @@ def main(argv=None):
         raise SystemExit("[out] 输出路径与输入相同，已拒绝（保留源片）。")
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    report_name = "preview_mix_report.json" if a.preview_duration else "bgm_mix_report.json"
+    rp = out.with_name(report_name)
+    sfx_path = Path(a.sfx_out).resolve() if a.sfx_out else None
+    diagnostic = out.with_name("mix_diagnostic.json") if final else None
+    destinations = [out, rp] + ([sfx_path] if sfx_path else []) + ([diagnostic] if diagnostic else [])
+    inputs = {video, bgm, beats_path, *(Path(v).resolve() for v in (a.beats, a.sfx) if v)}
+    if len(set(destinations)) != len(destinations) or inputs.intersection(destinations):
+        raise SystemExit("混音输入输出路径冲突")
+    if diagnostic:
+        diagnostic.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".mix-", dir=out.parent) as temp:
+        return mix_candidate(a, ff, probe, ver, video, bgm, beats_data, beats_path, bpm, bar_sec,
+                             drops, out, rp, sfx_path, Path(temp), final, profile)
+
+
+def mix_candidate(a, ff, probe, ver, video, bgm, beats_data, beats_path, bpm, bar_sec,
+                  drops, out, rp, sfx_path, stage, final, profile):
+    audio = profile.hard["audio"]
+    candidate = stage / "candidate.mp4"
     # --- 1. 高潮卡点偏移 ---
     drop_t, aligned, offset, climax_err = None, None, 0.0, None
     if a.bgm_offset is not None:
@@ -690,15 +751,18 @@ def main(argv=None):
         drop_t = float(drops[i]["t"])
         aligned = float(a.align_climax)
         offset = aligned - drop_t
-        climax_err = abs((drop_t + offset) - aligned)
-        if climax_err > 0.03:
-            raise SystemExit(f"[align-climax] 卡点误差 {climax_err:.4f}s 超过 0.03s。")
+        drop_sample = round(drop_t * SR) + round(offset * SR)
+        climax_err = abs(drop_sample / SR - aligned)
+        if climax_err > audio["climaxErrorSec"]:
+            raise SystemExit(f"[align-climax] 卡点误差 {climax_err:.4f}s 超过 {audio['climaxErrorSec']}s。")
 
     v_dur = probe_duration(probe, str(video)) or probe_duration(probe, str(video), "v:0")
     if v_dur <= 0:
         raise SystemExit(f"[ffprobe] 无法读取视频时长：{video}")
     if a.preview_duration and a.preview_duration > 0:
         v_dur = min(v_dur, float(a.preview_duration))
+    if final and not 0 <= aligned < v_dur:
+        raise SystemExit("高潮位置超出片长")
     v_samples = int(round(v_dur * SR))
 
     # --- 2. 解码双轨 ---
@@ -708,7 +772,7 @@ def main(argv=None):
         sfx_input = Path(a.sfx).resolve()
         if not sfx_input.exists():
             raise SystemExit(f"[sfx] 指定的微音效母带不存在：{sfx_input}")
-        # 按输入视频实际时长裁剪/补零对齐，兼容 10s 冒烟片与 Stage 1 快审片
+        # 按输入视频实际时长裁剪/补零对齐，兼容 10s 冒烟片与阶段 1 快审片
         effects = fit_len(decode_f32(ff, sfx_input, sr=SR, channels=2), v_samples)
         sfx_source = str(sfx_input)
         audio_note = (f"已使用 --sfx 指定的微音效母带，按视频时长 {v_dur:.2f}s 裁剪对齐："
@@ -720,6 +784,8 @@ def main(argv=None):
         effects = np.zeros((v_samples, 2), dtype=np.float32)
         audio_note = "渲染中间片无音轨，按静音基线处理"
     sfx_peak = float(np.abs(effects).max()) if len(effects) else 0.0
+    if a.preview_duration and not a.diagnostic and not np.any(effects):
+        raise SystemExit("快审缺少可听微音效")
     sfx_peak_dbfs = round(20.0 * math.log10(sfx_peak + 1e-12), 2)
 
     loop, loop_bars = make_loop(bgm_pcm, bar_sec)
@@ -761,7 +827,7 @@ def main(argv=None):
     bgm_track *= duck_envelope(v_samples, duck_points, a.duck_db)[:, None]
 
     # --- 5. 断层自检（混入 SFX 之前测 BGM 本身，避免被音效盖住） ---
-    gap_check = detect_bgm_gaps(bgm_track, a.bgm_gain, v_dur)
+    gap_check = detect_bgm_gaps(bgm_track,a.bgm_gain,v_dur,audio["gapStartSec"],audio["gapEndMarginSec"],audio["gapMaxSec"])
 
     # --- 6. 混合 + 限幅 + 实测（自适应收紧以保证 TP ≤ -1.0 dBTP） ---
     mix = effects + bgm_track * float(10.0 ** (a.bgm_gain / 20.0))
@@ -772,44 +838,63 @@ def main(argv=None):
     # 并预留 1.0 dB 给 AAC overshoot；末级仍由 alimiter 做真峰值限幅。
     ceiling, lufs, tp, method, attempts = LIMIT_START_DBFS, None, None, "", 0
     used_ceiling = LIMIT_START_DBFS
-    with tempfile.TemporaryDirectory(prefix="bgm_mix_") as td:
-        raw = Path(td) / "mix.f32"
-        for attempts in range(1, 6):
-            used_ceiling = ceiling
-            pre = 10.0 ** ((ceiling - 1.0) / 20.0)
-            peak = float(np.abs(mix).max())
-            scaled = mix * (pre / peak) if peak > pre else mix
-            scaled.astype("<f4").tofile(raw)
-            mux(ff, video, raw, out, ceiling, a.preview_duration)
-            lufs, tp, method = measure_loudness(ff, out)
-            if tp <= TARGET_TP_DBTP + 1e-6:
-                break
-            ceiling -= 0.4                 # 逐次收紧，直到 ebur128 实测达标
-    if tp > TARGET_TP_DBTP + 1e-6:
-        raise SystemExit(
-            f"[limiter] 自适应限幅 {attempts} 次后真峰值仍为 {tp:.2f} dBTP，"
-            "未达 ≤ -1.0 dBTP，已停止交付（请降低 --bgm-gain 后重试）。")
+    raw = stage / "mix.f32"
+    for attempts in range(1, 6):
+        used_ceiling = ceiling
+        pre = 10.0 ** ((ceiling - 1.0) / 20.0)
+        peak = float(np.abs(mix).max())
+        scaled = mix * (pre / peak) if peak > pre else mix
+        scaled.astype("<f4").tofile(raw)
+        mux(ff, video, raw, candidate, ceiling, a.preview_duration, profile)
+        lufs, tp, method = measure_loudness(ff, candidate)
+        if tp <= audio["truePeakMax"] + 1e-6:
+            break
+        ceiling -= 0.4                     # 逐次收紧，直到 ebur128 实测达标
+    raw.unlink()
+    if not final and tp > audio["truePeakMax"]:
+        raise SystemExit(f"[limiter] 真峰值仍为 {tp:.2f} dBTP，已停止交付")
 
     # --- 7. 轻量纯音效母带 ---
-    sfx_path = None
-    if a.sfx_out:
-        sfx_path = Path(a.sfx_out).resolve()
-        write_wav_16(sfx_path, effects, a.sfx_sr, a.sfx_channels)
-        print(f"[sfx] 已导出纯微音效母带：{sfx_path} "
-              f"({a.sfx_sr}Hz / {a.sfx_channels}ch / 16bit / 峰值 {sfx_peak_dbfs} dBFS)",
+    exported_peak = None
+    if sfx_path:
+        channels = a.sfx_channels
+        if channels is None:
+            source = subprocess.check_output([probe, "-v", "error", "-select_streams", "a:0",
+                                               "-show_entries", "stream=channels", "-of", "csv=p=0",
+                                               sfx_source or str(video)], text=True, timeout=30).strip()
+            channels = 1 if source in ("", "1") else 2
+        exported_peak = write_wav_16(stage / "sfx.wav", effects, a.sfx_sr, channels)
+        print(f"[sfx] 候选母带：{sfx_path} "
+              f"({a.sfx_sr}Hz / {channels}ch / 16bit / 峰值 {sfx_peak_dbfs} dBFS)",
               file=sys.stderr)
         if sfx_peak_dbfs < -90.0:
             print("[sfx][warn] 导出的微音效母带近似静音：输入视频无音轨且未指定 --sfx；"
                   "如需成片带微音效，请加 --sfx <sfx_mix.wav>。", file=sys.stderr)
 
-    a_dur = probe_duration(probe, str(out), "a:0")
+    a_dur = probe_duration(probe, str(candidate), "a:0")
+    if final:
+        failures = final_audio_failures(audio, lufs, tp, exported_peak, a_dur, v_dur, climax_err)
+        if not gap_check["pass"]:
+            failures.append("bgm_gap")
+        if {"integrated_lufs", "true_peak_dbtp"}.intersection(failures):
+            diagnostic = stage / "mix_diagnostic.json"
+            diagnostic.write_text(json.dumps({"integrated_lufs": lufs, "true_peak_dbtp": tp,
+                                              "bgm_gain_db": a.bgm_gain, "reasons": failures},
+                                             indent=2, allow_nan=False), "utf-8")
+            diagnostic.replace(out.with_name(diagnostic.name))
+        if failures and gap_check["pass"]:
+            raise SystemExit("混音拒绝交付: " + ", ".join(failures))
+    if not gap_check["pass"]:
+        raise SystemExit(f"BGM 断层: {gap_check}")
+
     report = {
-        "schema": "bgm_mix/1.1",
+        **profile.stamp,
+        "schema": "bgm_mix/1.2",
         "bgm_file": str(bgm),
         "bgm_name": bgm.name,
         "beats_file": str(beats_path),
-        "license_status": "user_supplied",
-        "license_note": "配乐由使用者自备，本工具不授予任何音乐版权；商用请确认授权，并用 sfx_only.wav 换乐重混",
+        "license_status": "user_supplied" if a.bgm else "personal_default_non_commercial",
+        "license_note": a.license_note or "非商单默认出厂使用；商单请改用 sfx_only.wav + 已获商用授权配乐重混",
         "bpm": bpm,
         "bar_sec": bar_sec,
         "loop_bars": loop_bars,
@@ -817,6 +902,8 @@ def main(argv=None):
         "aligned_climax_sec": aligned,
         "bgm_drop_index": a.bgm_drop_index if drop_t is not None else None,
         "bgm_drop_t": drop_t,
+        "bgm_sha256": beats_data["source_sha256"],
+        "drop_output_sample": drop_sample if drop_t is not None else None,
         "climax_error_sec": round(climax_err, 4) if climax_err is not None else None,
         "preroll_fill": fill_info,
         "duck_points": duck_points,
@@ -840,17 +927,26 @@ def main(argv=None):
         "video_duration_sec": round(v_dur, 3),
         "audio_duration_sec": round(a_dur, 3) if a_dur else None,
         "video_codec": "copy (-c:v copy，画面零损直通，绝不重编码)",
-        "audio_codec": "aac 256k / 48000Hz stereo / +faststart",
+        "audio_codec": f"{audio['codec']} {audio['bitrate']} / {audio['sampleRate']}Hz / {audio['channels']}ch / {profile.hard['video']['movflags']}",
         "audio_source_note": audio_note,
-        "delivery_mode": "single_film_with_bgm",
+        "delivery_mode": "single_film_with_bgm" if final else "preview_or_diagnostic",
+        "media_sha256": sha256_file(candidate),
+        "sfx_sha256": sha256_file(stage / "sfx.wav") if sfx_path else None,
+        "exported_sfx_peak_dbfs": exported_peak,
+        "timeline_sha256": sha256_file(Path(a.beats)) if a.beats else None,
         "ffmpeg": ver,
     }
-    rp = out.with_name("bgm_mix_report.json")
-    rp.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_tmp = stage / "report.json"
+    report_tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if sfx_path:
+        sfx_path.parent.mkdir(parents=True, exist_ok=True)
+        (stage / "sfx.wav").replace(sfx_path)
+    candidate.replace(out)
+    report_tmp.replace(rp)  # Commit record last. Consumers verify all artifact digests.
 
     line = "=" * 78
     print(line)
-    print(" BGM 混音报告")
+    print(" BGM 出厂混音报告")
     print("-" * 78)
     print(f" 输入片    : {video.name}")
     print(f" 默认单曲  : {bgm.name}  |  BPM {bpm:.2f}  |  小节 {bar_sec:.3f}s  |  循环 {loop_bars} 小节")
@@ -860,7 +956,7 @@ def main(argv=None):
     if drop_t is not None:
         print(f" 高潮卡点  : Drop#{a.bgm_drop_index} t={drop_t:.3f}s → 画面 {aligned:.3f}s")
         print(f" 起始偏移  : {offset:+.3f}s   |   卡点误差 {climax_err:.3f}s  "
-              f"(≤ 0.03s [{'OK' if climax_err <= 0.03 else 'FAIL'}])")
+              f"(≤ {audio['climaxErrorSec']}s [{'OK' if climax_err <= audio['climaxErrorSec'] else 'FAIL'}])")
     else:
         print(f" 起始偏移  : {offset:+.3f}s   （未指定 --align-climax）")
     if fill_info and fill_info.get("enabled"):
@@ -874,21 +970,19 @@ def main(argv=None):
         print(" 前段铺底  : 无需（offset ≤ 0）")
     print(f" 洼谷点    : {len(duck_points)} 个 {duck_points[:8]}  ({a.duck_db} dB / 前置 {DUCK_PRE_SEC}s) · {duck_src}")
     print(f" 集成响度  : {lufs:.2f} LUFS  |  真峰值 {tp:.2f} dBTP  "
-          f"(≤ -1.0 [{'OK' if tp <= TARGET_TP_DBTP + 1e-6 else 'FAIL'}])  [{method}]")
+          f"(≤ {audio['truePeakMax']} [{'OK' if tp <= audio['truePeakMax'] + 1e-6 else 'FAIL'}])  [{method}]")
     print(f" 断层自检  : {'PASS' if gap_check['pass'] else 'FAIL'}  "
-          f"最长空白 {gap_check.get('longestGapSec')}s / 允许 {GAP_MAX_SEC}s  "
+          f"最长空白 {gap_check.get('longestGapSec')}s / 允许 {audio['gapMaxSec']}s  "
           f"[{gap_check['window'][0]}s–{gap_check['window'][1]}s]")
-    print(f" 封装      : -c:v copy / AAC 256k / +faststart / 限幅 {used_ceiling:.2f} dBFS ×{attempts}")
+    print(f" 封装      : -c:v copy / {report['audio_codec']} / 限幅 {used_ceiling:.2f} dBFS ×{attempts}")
     print(f" 输出      : {out}")
     print(f" 报告      : {rp.name}")
     if sfx_path:
         print(f" 音效母带  : {sfx_path.name}")
     print("-" * 78)
-    if not gap_check["pass"]:
-        print(" [WARN] BGM 断层自检未通过，禁止交付；请检查铺底/交叉淡化参数。")
-    print(" [LICENSE] 配乐由使用者自备，本工具不授予音乐版权；商用请确认授权并保留 sfx_only.wav。")
+    print(" [LICENSE] 非商单默认单曲仅供个人出厂；商单请改用 sfx_only.wav + 已授权配乐重混。")
     print(line)
-    return 0 if gap_check["pass"] else 1
+    return 0
 
 
 if __name__ == "__main__":
