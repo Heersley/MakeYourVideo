@@ -69,8 +69,9 @@ class SealTests(unittest.TestCase):
         for name in ("package.json", "package-lock.json", "tsconfig.json"):
             if (ROOT / name).is_file():
                 shutil.copyfile(ROOT / name, root / name)
+        (root / "docs").mkdir()
         for name in ("AGENTS.md", "STYLE_B_SILENT_VIBE.md"):
-            shutil.copyfile(ROOT / "docs" / name, root / name)
+            shutil.copyfile(ROOT / "docs" / name, root / "docs" / name)
         cls.ep = ep = root / "output/evergreen_vibe/2026-11-23/01_fixture"
         src = ep / "src"
         (src / "vendor").mkdir(parents=True)

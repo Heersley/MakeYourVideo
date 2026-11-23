@@ -1,41 +1,4 @@
-"""mix_bgm.py — evergreen_vibe 出厂自动混音（默认单曲 bgm，视频流零损直通）。
-
-用法（交付阶段 · 单成片）：
-  python tools\\mix_bgm.py --video <渲染中间片>.mp4 \
-      --sfx <微音效母带>.wav \
-      --output "output\\evergreen_vibe\\<日期>\\<编号>_<主题>\\<主题>.mp4" \
-      --align-climax 122.0 --sfx-out "…\\src\\sfx_only.wav"
-
-用法（阶段 1 快审片 · 带 BGM 合成 30 秒）：
-  python tools\\mix_bgm.py --video <stage1>.mp4 \
-      --preview-duration 30 --align-climax 122.0 --output <stage1>_bgm.mp4
-
-微音效轨来源（优先级从高到低）：
-  1. `--sfx <wav>`：显式指定微音效母带，按输入视频实际时长裁剪/补零对齐；
-  2. 输入视频自带音轨：直接从渲染中间片无损提取；
-  3. 都没有：按静音基线处理（`--sfx-out` 会同时给出近似静音的 warning）。
-
-不传 --bgm 时自动锁定 assets/bgm/bgm.* 与 bgm.beats.json；
-节拍档案缺失会先自动跑一次 bgm_analyze.py；音频未放入则打印路径并报错退出。
-
-处理链（音频全在 numpy 采样级完成，FFmpeg 只负责一次解码 + 一次封装）：
-  1. 精确卡点：offset = align_climax - drops[idx].t，误差 0.000s（≤0.03s）
-  2. 正偏移前段铺底（v1.1 新增，根治长片前段无 BGM）：
-     offset > 0 时不再把 [0, offset) 留白，而是从同曲里挑一段**整数小节（16/8/4/2 bars）**
-     的最低能量乐段，做等功率交叉淡化循环铺满前段；音量按主高潮段实测 RMS 压低 5 dB
-     （可调 4–6 dB），可加温和低通；0.0s 起 0.4s 柔和淡入，末尾 0.30s 交叉淡化
-     精准落回主轨第 0 采样（主轨随即进入 Drop）。
-     候选小节数按 [16,8,4,2] 逐级降档并夹紧到「连续可用小节最长段」；短曲（如 35s
-     测试曲）在 offset 很大时不再直接 SystemExit，而是逐级放宽曲尾/Drop 保护并打
-     `[fill][warn] 铺底降档` warning，报告里记 `degraded / strategy / max_usable_run`。
-  3. 整小节 bar_sec 循环体 + 1.5s 等功率 cos/sin 交叉淡化；片头柔和淡入、
-     片尾 --fade-out（默认 2.5s）对数淡出至静音
-  4. 反转落点前 0.45s 余弦洼谷（--duck-db），落点顺滑回弹
-  5. 原 48kHz 立体声微音效轨 + BGM（-13.5dB）混合 -> FFmpeg alimiter 真峰值
-     -1.0 dBFS -> ebur128 实测 LUFS / True Peak（自适应收紧以保证 TP ≤ -1.0 dBTP）
-  6. 全片 BGM 断层自检：在 [0.5s, total-2.0s] 内找 >1.5s 的异常空白，写入报告
-  7. -c:v copy（绝不重编码画面） + AAC 256k 单成片出片；可选导出轻量 sfx_only.wav
-"""
+"""将配乐和微音效混入已渲染画面，保留原视频流。"""
 from __future__ import annotations
 
 from bgm_common import DEFAULT_BGM_GAIN, sha256_file
@@ -627,8 +590,8 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(
-        description="evergreen_vibe 出厂自动混音（单成片 + 前段铺底 + 断层自检）")
-    p.add_argument("--video", required=True, help="已验收的渲染中间片 / 阶段 1 快审片")
+        description="配乐与微音效混音（单成片 + 前段铺底 + 断层自检）")
+    p.add_argument("--video", required=True, help="已渲染的样片或全片画面")
     p.add_argument("--bgm", default=None, help="默认自动锁定 assets/bgm/bgm.*")
     p.add_argument("--beats", default=None, help="视频分幕 beats.json（读 hardCut/duck 反转点）")
     p.add_argument("--align-climax", type=float, default=None, help="画面高潮秒数，如 122.0")
@@ -893,8 +856,8 @@ def mix_candidate(a, ff, probe, ver, video, bgm, beats_data, beats_path, bpm, ba
         "bgm_file": str(bgm),
         "bgm_name": bgm.name,
         "beats_file": str(beats_path),
-        "license_status": "user_supplied" if a.bgm else "personal_default_non_commercial",
-        "license_note": a.license_note or "非商单默认出厂使用；商单请改用 sfx_only.wav + 已获商用授权配乐重混",
+        "license_status": "user_supplied" if a.bgm else "user_supplied_default_slot",
+        "license_note": a.license_note or "使用者须确认配乐授权",
         "bpm": bpm,
         "bar_sec": bar_sec,
         "loop_bars": loop_bars,
@@ -946,10 +909,10 @@ def mix_candidate(a, ff, probe, ver, video, bgm, beats_data, beats_path, bpm, ba
 
     line = "=" * 78
     print(line)
-    print(" BGM 出厂混音报告")
+    print(" 配乐与微音效混音报告")
     print("-" * 78)
     print(f" 输入片    : {video.name}")
-    print(f" 默认单曲  : {bgm.name}  |  BPM {bpm:.2f}  |  小节 {bar_sec:.3f}s  |  循环 {loop_bars} 小节")
+    print(f" 配乐      : {bgm.name}  |  BPM {bpm:.2f}  |  小节 {bar_sec:.3f}s  |  循环 {loop_bars} 小节")
     print(f" 节拍档案  : {beats_path.name}")
     print(f" 微音效轨  : {Path(sfx_source).name if sfx_source else '（无 --sfx，取自视频音轨或静音）'}"
           f"  峰值 {sfx_peak_dbfs} dBFS")
@@ -980,7 +943,7 @@ def mix_candidate(a, ff, probe, ver, video, bgm, beats_data, beats_path, bpm, ba
     if sfx_path:
         print(f" 音效母带  : {sfx_path.name}")
     print("-" * 78)
-    print(" [LICENSE] 非商单默认单曲仅供个人出厂；商单请改用 sfx_only.wav + 已授权配乐重混。")
+    print(f" 授权说明  : {report['license_note']}")
     print(line)
     return 0
 

@@ -8,25 +8,27 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-ROOT_FILES = ("README.md","package.json","package-lock.json","tsconfig.json",
-              ".gitattributes",".gitignore")
-DOC_FILES = ("AGENTS.md","STYLE_B_SILENT_VIBE.md","PROCESS.md","prompt.md","PRODUCTION.md")
+ROOT_FILES = ("README.md", "LICENSE", "package.json", "package-lock.json",
+              "requirements.txt", "tsconfig.json", ".gitattributes", ".gitignore")
+ASSET_TYPES = {
+    "docs": {".md"},
+    "tools": {".py", ".md", ".json", ".cjs", ".mjs", ".ts"},
+    "core/vibe": {".py", ".json", ".tsx", ".ts"},
+    "examples/diameter": {".md", ".py", ".json", ".tsx"},
+    "assets/fonts": {".txt", ".md", ".woff", ".woff2", ".otf"},
+    "assets/bgm": {".txt", ".md"},
+}
 
 
 def create(dest):
-    paths = [ROOT/name for name in ROOT_FILES if (ROOT/name).is_file()]
-    paths += [ROOT/"docs"/name for name in DOC_FILES if (ROOT/"docs"/name).is_file()]
-    for name in ("tools","core/vibe","assets/fonts","assets/bgm"):
-        for p in (ROOT/name).rglob("*"):
-            if p.name.casefold() == "env.local.json":
-                continue
-            if p.is_file() and not set(p.parts).intersection({"__pycache__","legacy_archive"}):
-                allowed = {"tools":{".py",".md",".json",".cjs",".mjs",".ts"},
-                           "core/vibe":{".py",".json",".tsx",".ts"},
-                           "assets/fonts":{".txt",".md",".woff",".woff2",".otf"},
-                           "assets/bgm":{".txt",".json"}}
-                if p.suffix.lower() in allowed[name] or p.name == "LICENSE":
-                    paths.append(p)
+    paths = [ROOT / name for name in ROOT_FILES if (ROOT / name).is_file()]
+    excluded = {"__pycache__", ".work", "legacy_archive", "env.local.json"}
+    for directory, suffixes in ASSET_TYPES.items():
+        for path in (ROOT / directory).rglob("*"):
+            parts = {part.casefold() for part in path.relative_to(ROOT).parts}
+            if not parts.intersection(excluded) and path.is_file() and (
+                    path.suffix.lower() in suffixes or path.name == "LICENSE"):
+                paths.append(path)
     dest.parent.mkdir(parents=True,exist_ok=True)
     # Publish the verified file without replacing any previous backup.
     with tempfile.NamedTemporaryFile(dir=dest.parent,delete=False) as temp:

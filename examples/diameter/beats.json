@@ -1,0 +1,256 @@
+{
+  "track": "evergreen_vibe",
+  "cut_mode": "cinema",
+  "duration_tier": "standard",
+  "lighting": "studio_dark",
+  "asset_layers": [
+    "vector"
+  ],
+  "fps": 60,
+  "totalSec": 75,
+  "alignClimaxSec": 57.5,
+  "beats": [
+    {
+      "id": 1,
+      "startSec": 0,
+      "endSec": 5,
+      "durationSec": 5,
+      "readingStartSec": 2,
+      "readingEndSec": 3,
+      "lines": [
+        "圆上有一个动点"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 2,
+      "startSec": 5,
+      "endSec": 10,
+      "durationSec": 5,
+      "readingStartSec": 7,
+      "readingEndSec": 8,
+      "lines": [
+        "它沿着圆周滑动"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 3,
+      "startSec": 10,
+      "endSec": 15,
+      "durationSec": 5,
+      "readingStartSec": 12,
+      "readingEndSec": 13,
+      "lines": [
+        "两端固定在直径上"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 4,
+      "startSec": 15,
+      "endSec": 20,
+      "durationSec": 5,
+      "readingStartSec": 17,
+      "readingEndSec": 18,
+      "lines": [
+        "三点连成三角形"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 5,
+      "startSec": 20,
+      "endSec": 25,
+      "durationSec": 5,
+      "readingStartSec": 22,
+      "readingEndSec": 23,
+      "lines": [
+        "顶角始终是直角"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 6,
+      "startSec": 25,
+      "endSec": 30,
+      "durationSec": 5,
+      "readingStartSec": 27,
+      "readingEndSec": 28,
+      "lines": [
+        "从顶点连到圆心"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 7,
+      "startSec": 30,
+      "endSec": 35,
+      "durationSec": 5,
+      "readingStartSec": 32,
+      "readingEndSec": 33,
+      "lines": [
+        "三段都是半径"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 8,
+      "startSec": 35,
+      "endSec": 40,
+      "durationSec": 5,
+      "readingStartSec": 37,
+      "readingEndSec": 38,
+      "lines": [
+        "左边是等腰三角形"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 9,
+      "startSec": 40,
+      "endSec": 45,
+      "durationSec": 5,
+      "readingStartSec": 42,
+      "readingEndSec": 43,
+      "lines": [
+        "右边也是等腰"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 10,
+      "startSec": 45,
+      "endSec": 50,
+      "durationSec": 5,
+      "readingStartSec": 47,
+      "readingEndSec": 48,
+      "lines": [
+        "顶角被分成两部分"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 11,
+      "startSec": 50,
+      "endSec": 55,
+      "durationSec": 5,
+      "readingStartSec": 52,
+      "readingEndSec": 53,
+      "lines": [
+        "分别等于两端底角"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 12,
+      "startSec": 55,
+      "endSec": 60,
+      "durationSec": 5,
+      "readingStartSec": 57,
+      "readingEndSec": 58,
+      "lines": [
+        "顶角等于底角之和"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 13,
+      "startSec": 60,
+      "endSec": 65,
+      "durationSec": 5,
+      "readingStartSec": 62,
+      "readingEndSec": 63,
+      "lines": [
+        "三个角合为半周"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 14,
+      "startSec": 65,
+      "endSec": 70,
+      "durationSec": 5,
+      "readingStartSec": 67,
+      "readingEndSec": 68,
+      "lines": [
+        "顶角正好占一半"
+      ],
+      "hardCut": false
+    },
+    {
+      "id": 15,
+      "startSec": 70,
+      "endSec": 75,
+      "durationSec": 5,
+      "readingStartSec": 72,
+      "readingEndSec": 73,
+      "lines": [
+        "直径所对是直角"
+      ],
+      "hardCut": false
+    }
+  ],
+  "effects": [
+    {
+      "type": "tick",
+      "timeSec": 2.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 7.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 12.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 17.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 22.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 27.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 32.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 37.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 42.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 47.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 52.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 57.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 62.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 67.5
+    },
+    {
+      "type": "tick",
+      "timeSec": 72.5
+    }
+  ]
+}

@@ -32,10 +32,6 @@ temp/
 *.ttf
 *.otf
 public/fonts/
-public/stone_v*.png
-assets/fonts/*.woff
-assets/fonts/*.woff2
-assets/fonts/*.ttf
 assets/bgm/*.mp3
 assets/bgm/*.m4a
 assets/bgm/*.wav
@@ -51,17 +47,15 @@ venv/
 # 私有业务与本地环境（严禁进入公开仓）
 backups/
 inbox/
+.agents/
 .codex/
 .claude/
 .workbuddy/
 .workbuddy-ai/
 env.local.json
-tools/env.local.json
 fix.md
 *.bundle
 *.zip
-*.png
-*.jpg
 
 # 浏览器登录态 / Cookie / Token
 cookies.json

@@ -45,9 +45,7 @@ function probeLoopback(timeout = 200) {
 
 
 function findChrome() {
-  // Same lookup order as the episode evidence collector that already renders in
-  // the Codex desktop sandbox: explicit override, machine-wide Chrome, Edge, and
-  // only then a per-user Chrome so a Program Files install is never shadowed.
+  // Prefer an explicit path, then system Chrome and Edge, then per-user Chrome.
   const candidates = [process.env.VIBE_CHROME,
     'C:/Program Files/Google/Chrome/Application/chrome.exe',
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -63,8 +61,7 @@ function findChrome() {
 // desktop sandbox that handler cannot write %LOCALAPPDATA%/%TEMP% and the whole
 // browser dies with exit 4294930433 (-36863) before any page loads. Every
 // writable location is therefore redirected into the run directory, and the
-// crash reporter is disabled outright: the same recipe the Salt evidence
-// collector already proved at 94 frames.
+// crash reporter is disabled for the run.
 const CHROME_SANDBOX_ENV = ['LOCALAPPDATA', 'APPDATA', 'TEMP', 'TMP', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME'];
 
 async function prepareChromeTemp(plan) {

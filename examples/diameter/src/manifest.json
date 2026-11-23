@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "topic": "diameter.md",
+  "entry": "entry.tsx",
+  "previewComposition": "Preview",
+  "fullComposition": "Cinema",
+  "previewFrames": 900,
+  "profile": "vibe-3.3",
+  "bgmGainDb": -2.5,
+  "sfx": "src/sfx.wav",
+  "evidenceScript": "src/evidence/frames.py"
+}

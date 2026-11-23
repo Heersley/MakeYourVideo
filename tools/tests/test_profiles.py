@@ -271,10 +271,15 @@ class ProfileTests(unittest.TestCase):
         fonts = self.root / "assets/fonts"
         fonts.mkdir(parents=True)
         (fonts / "test.otf").write_bytes(b"OTTO")
+        example = self.root / "examples/diameter"
+        example.mkdir(parents=True)
+        (example / "studio.tsx").write_text("example", encoding="utf-8")
         dest = self.root / "test.zip"
         with patch.object(backup_infra, "ROOT", self.root):
             backup_infra.create(dest)
         with ZipFile(dest) as archive:
             self.assertEqual(archive.read("assets/fonts/test.otf"), b"OTTO")
             self.assertIn("tools/env.example.json", archive.namelist())
-            self.assertNotIn("tool/env.local.json", [name.lower() for name in archive.namelist()])
+            for path in ("LICENSE", "requirements.txt", "examples/diameter/studio.tsx"):
+                self.assertIn(path, archive.namelist())
+            self.assertNotIn("tools/env.local.json", [name.lower() for name in archive.namelist()])

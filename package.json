@@ -19,9 +19,8 @@
     "typescript": "5.9.3"
   },
   "scripts": {
-    "dev": "remotion studio examples/nim_game/src/entry.tsx",
-    "build": "remotion bundle examples/nim_game/src/entry.tsx",
-    "render:example": "remotion render examples/nim_game/src/entry.tsx NimCinema out/nim-cinema.mp4 --codec=h264 --crf=16 --pixel-format=yuv420p --color-space=bt709 --x264-preset=slow --audio-bitrate=256k",
+    "dev": "remotion studio examples/diameter/studio.tsx",
+    "build": "remotion bundle examples/diameter/studio.tsx",
     "typecheck": "tsc --noEmit -p core/vibe/tsconfig.json",
     "test:js": "node --test tools/tests/vibe_core.cjs"
   }

@@ -7,7 +7,7 @@ complete local toolchain can enable them with:
 
     MKYV_MEDIA_TESTS=1 python -m unittest discover -s tools/tests -v
 
-Font binaries: 4 families / 8 files in public/fonts/ (see assets/fonts/FONT-NOTICE.md).
+Font binaries: 4 families / 8 files in assets/fonts/ (see assets/fonts/FONT-NOTICE.md).
 """
 import os
 from pathlib import Path
@@ -35,4 +35,4 @@ def media_tests_enabled():
 def skip_reason():
     if os.environ.get("MKYV_MEDIA_TESTS") != "1":
         return "真实渲染测试需 MKYV_MEDIA_TESTS=1 显式开启"
-    return "缺少 4 族 8 个字体二进制（放入 public/fonts/ 后重试）"
+    return "缺少 4 族 8 个字体二进制（放入 assets/fonts/ 后重试）"
