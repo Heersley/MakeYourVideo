@@ -37,6 +37,7 @@ flowchart TB
 | --- | --- |
 | [`AGENTS.md`](AGENTS.md) | 仓库根规则入口。支持 `AGENTS.md` 自动发现的客户端（如 Antigravity、Codex）打开仓库即自动加载，总览红线与单窗口多 Agent 架构。 |
 | [`.agents/skills/`](.agents/skills/produce-episode/SKILL.md) | 内置三份标准 Agent Skills（[`produce-episode`](.agents/skills/produce-episode/SKILL.md)、[`render-episode`](.agents/skills/render-episode/SKILL.md)、[`verify-episode`](.agents/skills/verify-episode/SKILL.md)），支持子 Agent 编排的客户端克隆后开箱即用。 |
+| [`.agents/hooks.json`](.agents/hooks.json) | 宿主级 `PreToolUse` 安全钩子：对 `episode.py approve` 强制 `force_ask` 人工弹窗确认（防 Agent 绕过自签），对 `git gc` / `git prune` 直接 `deny` 拦截。 |
 | [`docs/AGENTS.md`](docs/AGENTS.md) | 单期制作约定（交付归档的规则快照）。规定单期边界、事实和素材授权要求以及两处人工确认。 |
 | [`docs/prompt.md`](docs/prompt.md) | 策划模板。在本地工作区可直接落盘 `src/plan.md` 等策划文件；在无磁盘权限的网页 LLM 中也可输出完整方案正文。 |
 | [`docs/PROCESS.md`](docs/PROCESS.md) | 协作与返工手册。说明单窗口自动流、跨会话 `src/plan.md` 磁盘交接、以及 `handoff` / `resolve` 返工记录方式。 |

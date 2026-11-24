@@ -13,6 +13,7 @@ ROOT_FILES = ("README.md", "AGENTS.md", "LICENSE", "package.json", "package-lock
 ASSET_TYPES = {
     "docs": {".md"},
     ".agents/skills": {".md"},
+    ".agents/hooks": {".cjs"},
     "tools": {".py", ".md", ".json", ".cjs", ".mjs", ".ts"},
     "core/vibe": {".py", ".json", ".tsx", ".ts"},
     "examples/diameter": {".md", ".py", ".json", ".tsx"},
@@ -23,6 +24,8 @@ ASSET_TYPES = {
 
 def create(dest):
     paths = [ROOT / name for name in ROOT_FILES if (ROOT / name).is_file()]
+    if (ROOT / ".agents/hooks.json").is_file():
+        paths.append(ROOT / ".agents/hooks.json")
     excluded = {"__pycache__", ".work", "legacy_archive", "env.local.json"}
     for directory, suffixes in ASSET_TYPES.items():
         base = ROOT / directory

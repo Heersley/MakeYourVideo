@@ -5,7 +5,9 @@
 ## 1. 核心红线
 
 - **单片单会话隔离**：每次制作一条无旁白科普短片（`output/evergreen_vibe/YYYY-MM-DD/NN_主题/`）；严禁在同一个长会话连续渲染多条全片，下一期请新开会话。
-- **两处强制人工卡点**：程序强制停等导演实际确认 `review`（带声样片确认）与 `delivery`（终审采纳）。严禁代导演签字，严禁在未获有效 `review` 批准前执行 `full` / `ship` / `finish`。
+- **两处强制人工卡点**：程序强制停等导演实际确认 `review`（带声样片确认）与 `delivery`（终审采纳）。严禁代导演签字，严禁在未获有效 `review` 批准前执行 `full` / `ship` / `finish`。仓内 [`.agents/hooks.json`](.agents/hooks.json) 的 `PreToolUse` 安全钩子会对 `episode.py approve` 强制触发宿主 `force_ask` 人工确认弹窗（无视自动放行缓存），并对 `git gc` / `git prune` 直接 `deny` 拦截。
+- **入口预检与静态 Lint**：`preflight` 通过 [`tools/check_entry.cjs`](tools/check_entry.cjs) 执行 TypeScript 类型检查与高精度 AST 静态 Lint（硬拦截禁用系统字体 `Microsoft YaHei` / `SimSun` / `SimHei` / `STZhongsong` 及未显式设置 `overshootClamping: true` 的 Remotion `spring()` 调用；动态变量引用报 Warning）。
+- **模型能力要求**：建议使用具备强推理、多模态看图（核查静帧/联系表）与子 Agent 编排能力的旗舰模型，不绑定特定厂商或版本号。
 - **事实与素材前置**：上屏年份、人物、文献、数值、公式须回溯一手出处并写入 `facts_and_sources.md`；素材与配乐使用前确认授权；图形/物理隐喻方向须与命题一致。
 - **底座快照隔离**：单期源码先运行 `python -B tools/episode.py snapshot $ep`，并从本期 `src/vendor/vibe/` 相对导入公共原语；禁止直接 import 仓库根 `core/vibe/`。
 - **职责边界**：单期渲染上下文禁止修改 `tools/`、`tools/profiles/`、`core/vibe/`、`examples/`；公共基建升级另开独立维护会话并跑通 `tools/tests/` 回归。
