@@ -44,10 +44,15 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# 私有业务与本地环境（严禁进入公开仓）
+# 私有业务与本地环境（严禁进入公开仓；.agents/ 仅保留公开工作流 Skill）
 backups/
 inbox/
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/produce-episode/
+!.agents/skills/render-episode/
+!.agents/skills/verify-episode/
 .codex/
 .claude/
 .workbuddy/

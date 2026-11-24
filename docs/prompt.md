@@ -1,27 +1,26 @@
-# 用策划 LLM 生成渲染提示词
+# 策划对齐与单期方案落盘模板（Architect）
 
-把下面的模板交给一个新的 LLM 会话，让它担任本期 Architect。替换占位信息，并把已有分幕、事实材料和清单与它一起给到。输出的渲染任务提示词和单期文件交给负责实现的 Render Agent。
+适用于**本地工作区单窗口自动流**（配合 [`produce-episode`](../.agents/skills/produce-episode/SKILL.md) Skill：策划定稿落盘 `src/plan.md` 后自动拉起隔离的 Render 子 Agent，免去跨窗口复制提示词），也兼容**无本地磁盘权限的网页 LLM**（直接输出可保存为 `src/plan.md` 的完整方案正文）。
 
-策划时先读[制作约定](AGENTS.md)、[协作流程](PROCESS.md)、[视听规范](STYLE_B_SILENT_VIBE.md)和[制作手册](PRODUCTION.md)。
+策划前先读[根规则入口](../AGENTS.md)、[制作约定](AGENTS.md)、[协作流程](PROCESS.md)、[视听规范](STYLE_B_SILENT_VIBE.md)和[制作手册](PRODUCTION.md)。
 
 ```text
-你是本期的策划 LLM。请先熟悉项目规范，再整理制作方案和交接材料。
+你是本期的策划 Agent（Architect）。请先熟悉项目规范，再完成核查、分幕与单期制作方案。
 
 本期目录：<output/evergreen_vibe/YYYY-MM-DD/NN_主题>
 选题与目标：<希望观众看明白什么>
 已有材料：<事实、来源、素材、分幕、清单或审片意见>
-本期限制：<时长、画面风格、授权范围或必须保留的内容>
+本期限制：<时长、光场 studio_dark/keynote_light、画面风格、配乐授权或必须保留的内容>
 
-1. 核查上屏论断、一手来源、素材授权和图形隐喻。列出仍需核实的内容。
-2. 规划分幕。写清每幕的时间、上屏文字、核心动作、阅读窗、音效、
-   转场和高潮点。以项目契约组织 beats.json、facts_and_sources.md
-   和 src/manifest.json 所需内容，保留已确认的事实与约束。
-3. 输出一段可以直接交给 Render Agent 的任务提示词，包含本期目录、
-   输入文件、要实现的 Remotion 组件与视觉节奏、音效和配乐要求、
-   本期档案、应交付的文件、可执行的命令及验收条件。
-4. 在任务提示词中要求从本期 src/vendor/vibe/ 导入固定的 core/vibe 1.2.0，
-   用 evidence_kit 生成样片和全片取证。先交带声样片，停在 review；
-   收到实际样片批准后再运行 ship，完成验收并交给导演确认 delivery。
-
-本次任务交付策划材料和渲染任务提示词。
+1. 核查上屏论断、一手来源、素材授权和物理/几何隐喻方向；列出仍需核实或应删去的内容。
+2. 规划分幕：写清每幕的起止整数帧、上屏短主句、核心视觉演化、左闭右开阅读窗、微音效时间、
+   转场和高潮点；确认所用制作档案（默认 vibe-3.3，确需单幕时长例外时选用 vibe-3.4 并写明 overrides）。
+3. 若具备本地工作区写权限：策划定稿后直接将 facts_and_sources.md、beats.json、初始 src/manifest.json
+   与完整单期制作方案 src/plan.md（含视觉世界观、色板版式、逐幕演法、常量与立体声音色方案，要求
+   Render 从本期 src/vendor/vibe/ 导入固定的 core/vibe 1.2.0 并用 evidence_kit 取证）写入本期目录。
+   若无磁盘权限（网页对话）：输出可直接保存为上述文件与 src/plan.md 的完整正文。
+4. 落盘后停等导演确认开渲：
+   - 若在支持子 Agent 的单窗口自动流中，获确认后按 .agents/skills/produce-episode/SKILL.md
+     自动拉起隔离的 Render 子 Agent 执行 preview，严禁越过 review / delivery 人工卡点。
+   - 若采用跨会话手交模式，只附一条指向本期目录与 src/plan.md 的极简交接说明。
 ```

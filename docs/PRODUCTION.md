@@ -1,6 +1,6 @@
 # 单片制作手册
 
-在仓库根目录运行下列命令。环境与示例初始化见[快速上手](../README.md)。制作时遵循[单期约定](AGENTS.md)和[视听规范](STYLE_B_SILENT_VIBE.md)。下面的 `$python` 指安装了依赖的 Python 3.12.4，`$ep` 指本期目录。
+在仓库根目录运行下列命令。环境与示例初始化见[快速上手](../README.md)。制作时遵循[根规则入口](../AGENTS.md)、[单期约定](AGENTS.md)和[视听规范](STYLE_B_SILENT_VIBE.md)；在支持子 Agent 的客户端中可直接通过 [`.agents/skills/`](../.agents/skills/produce-episode/SKILL.md) 走单窗口自动流，跨会话接手仍以磁盘记录为准。下面的 `$python` 指安装了依赖的 Python 3.12.4，`$ep` 指本期目录。
 
 ## 项目结构
 
@@ -10,6 +10,7 @@
 |---|---|
 | `beats.json` | [分幕时间轴](../tools/contracts/beats.schema.json)，含光场、切镜、音效和音乐高潮点。分幕边界用正式时间轴的整数帧，阅读窗左闭右开。 |
 | `facts_and_sources.md` | 上屏论断、推导、出处和素材授权。 |
+| `src/plan.md` | 可选，Architect 落盘的单期视觉世界观、逐幕演法、常量与音色方案，Render 开工直接读取（位于 `src/` 内，不占用交付根目录七件白名单，也不改变内容指纹）。 |
 | `src/manifest.json` | [单期清单](../tools/contracts/manifest.schema.json)，声明入口、两个 Composition、档案、素材、微音效和取证脚本。 |
 | `src/entry.tsx` | 原生坐标的 Remotion 入口。快审与全片共用画幅，帧率及输出缩放由制作档案指定。 |
 | `src/assets/` | 默认静态素材目录。字体放入实际 `publicDir` 下的 `fonts/`。 |

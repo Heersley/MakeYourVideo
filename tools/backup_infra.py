@@ -8,10 +8,11 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-ROOT_FILES = ("README.md", "LICENSE", "package.json", "package-lock.json",
+ROOT_FILES = ("README.md", "AGENTS.md", "LICENSE", "package.json", "package-lock.json",
               "requirements.txt", "tsconfig.json", ".gitattributes", ".gitignore")
 ASSET_TYPES = {
     "docs": {".md"},
+    ".agents/skills": {".md"},
     "tools": {".py", ".md", ".json", ".cjs", ".mjs", ".ts"},
     "core/vibe": {".py", ".json", ".tsx", ".ts"},
     "examples/diameter": {".md", ".py", ".json", ".tsx"},
@@ -24,7 +25,10 @@ def create(dest):
     paths = [ROOT / name for name in ROOT_FILES if (ROOT / name).is_file()]
     excluded = {"__pycache__", ".work", "legacy_archive", "env.local.json"}
     for directory, suffixes in ASSET_TYPES.items():
-        for path in (ROOT / directory).rglob("*"):
+        base = ROOT / directory
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
             parts = {part.casefold() for part in path.relative_to(ROOT).parts}
             if not parts.intersection(excluded) and path.is_file() and (
                     path.suffix.lower() in suffixes or path.name == "LICENSE"):

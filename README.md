@@ -11,46 +11,61 @@
 ```mermaid
 flowchart TB
     U["Director<br/>两处人工卡点：review 样片确认、delivery 终审采纳"]
-    A["Architect<br/>核查一手来源、设计分幕"]
-    P["Render · preview<br/>带声样片与关键帧取证"]
-    S["Render · ship<br/>原生 2K@60fps 流式编码、终混、六项验收与归档"]
-    I["Infra & Verifier<br/>维护制作档案、共享底座与工具，独立复验"]
+    A["Architect（主对话总控）<br/>核查一手来源、设计分幕、落盘 src/plan.md"]
+    P["Render 子 Agent · preview<br/>独立干净上下文实现代码与带声样片"]
+    S["Render 子 Agent · ship<br/>原生 2K@60fps 流式编码、终混、六项验收与归档"]
+    V["Verifier 子 Agent（独立只读）<br/>verify 复验、目视核查封面与联系表"]
     O["交付物<br/>成片、封面、联系表与验收证据"]
-    U -->|"确认选题"| A
-    A -->|"提交事实与分幕"| U
-    U -->|"策划定稿后制作样片"| P
-    P -->|"提交样片"| U
-    U -->|"review 样片确认后放行"| S
+    U -->|"确认选题与策划"| A
+    A -->|"落盘 src/plan.md 自动派发"| P
+    P -->|"回传样片与静图自检"| U
+    U -->|"review 签字放行"| S
     S --> O
-    O -->|"delivery 终审采纳"| U
-    I -.->|"维护工具与档案"| P
-    I -.->|"只读复验"| O
+    O -->|"自动触发只读复检"| V
+    V -->|"呈交 delivery 终审"| U
 ```
 
-各角色的交接和返工方式见[协作流程](docs/PROCESS.md)。
+不再需要常驻独立的运维 Agent；公共工具（`tools/`）、制作档案（`tools/profiles/`）与共享底座（`core/vibe/`）按需在单独维护会话迭代。各角色的自动编排、交接与返工方式见[协作流程](docs/PROCESS.md)。
 
 ## How to Use
 
-可以先在 Remotion Studio 播放圆周角几何示例。要制作完整短片，则准备单期源码和素材，依次生成带声样片、确认 `review`、执行 `ship`、确认 `delivery`。
+可以先在 Remotion Studio 播放圆周角几何示例。要制作完整短片，则准备单期源码和素材，依次生成带声样片、确认 `review`、执行 `ship`、复验并确认 `delivery`。
 
-### 各份文档怎么用
+### 各份文档与 Agent 技能怎么用
 
-| 文档 | 什么时候读、交给谁 |
+| 文档 / 技能 | 什么时候读、交给谁 |
 | --- | --- |
-| [`docs/AGENTS.md`](docs/AGENTS.md) | 开新工作会话时让每个 Agent 先读。这里规定单期工作边界、事实和素材要求、样片与交付的两次人工确认。 |
-| [`docs/prompt.md`](docs/prompt.md) | 给一个新的 LLM 会话。填写选题、目标和本期目录，让它先熟悉项目，再整理分幕、事实和验收要求，写出可直接交给渲染 Agent 的提示词。 |
-| [`docs/PROCESS.md`](docs/PROCESS.md) | 拆任务和交接时读。用于确认谁负责策划、谁写渲染、谁改工具，以及返工或复验怎么记录。 |
-| [`docs/STYLE_B_SILENT_VIBE.md`](docs/STYLE_B_SILENT_VIBE.md) | 策划设计分幕、渲染编写画面、人工审片时读。这里定义画面、音效、阅读窗和视觉取证要求。 |
+| [`AGENTS.md`](AGENTS.md) | 仓库根规则入口。支持 `AGENTS.md` 自动发现的客户端（如 Antigravity、Codex）打开仓库即自动加载，总览红线与单窗口多 Agent 架构。 |
+| [`.agents/skills/`](.agents/skills/produce-episode/SKILL.md) | 内置三份标准 Agent Skills（[`produce-episode`](.agents/skills/produce-episode/SKILL.md)、[`render-episode`](.agents/skills/render-episode/SKILL.md)、[`verify-episode`](.agents/skills/verify-episode/SKILL.md)），支持子 Agent 编排的客户端克隆后开箱即用。 |
+| [`docs/AGENTS.md`](docs/AGENTS.md) | 单期制作约定（交付归档的规则快照）。规定单期边界、事实和素材授权要求以及两处人工确认。 |
+| [`docs/prompt.md`](docs/prompt.md) | 策划模板。在本地工作区可直接落盘 `src/plan.md` 等策划文件；在无磁盘权限的网页 LLM 中也可输出完整方案正文。 |
+| [`docs/PROCESS.md`](docs/PROCESS.md) | 协作与返工手册。说明单窗口自动流、跨会话 `src/plan.md` 磁盘交接、以及 `handoff` / `resolve` 返工记录方式。 |
+| [`docs/STYLE_B_SILENT_VIBE.md`](docs/STYLE_B_SILENT_VIBE.md) | 策划设计分幕、渲染编写画面、人工审片时读。定义画面、音效、阅读窗和视觉取证要求。 |
 | [`docs/PRODUCTION.md`](docs/PRODUCTION.md) | 实际操作时打开。查单期目录、清单、快审、全片、验收和交付命令。 |
 | [字体清单](assets/fonts/FONT-NOTICE.md)、[配乐说明](assets/bgm/README.md) | 准备素材时读。分别核对字体文件名、配乐授权、节拍分析和清单字段。 |
 | [示例事实文件](examples/diameter/facts_and_sources.md) | 写自己的 `facts_and_sources.md` 时参考。逐项记录上屏论断、推导、一手出处和素材授权。 |
 
 ### 如何分配给 Agent
 
-1. **策划 LLM（Architect）**。把 `docs/prompt.md` 和选题材料交给新会话。让它核查事实、规划分幕，并输出一段面向渲染 Agent 的任务提示词。交接时把提示词和本期的 `beats.json`、`facts_and_sources.md`、`src/manifest.json` 一起交给下一位。
-2. **能力较强的编程 Agent（Render）**。用独立会话接收策划交接，负责单期 Remotion 组件、图形、逐帧动效、微音效和取证代码，实现后生成带声样片。样片获 `review` 后，由它运行 `ship` 制作全片。
-3. **另一个 Agent（Infra & Verifier）**。把边界明确的辅助脚本、文档、依赖维护和回归测试交给它。常规小改可用较轻量的模型，并提供复现输入和验收条件。成片复验使用 `verify`。
-4. **你（Director）**。决定选题、审看样片和成片，分别确认 `review` 与 `delivery`。单人也可以按职责分开使用几个会话，用单期文件和提示词交接。
+仓库同时支持**单窗口自动流**与**跨会话磁盘交接**两种工作方式，均保证「策划脑暴」与「高精编码渲染」上下文物理隔离：
+
+#### 方式一：单窗口自动流（推荐，支持子 Agent 编排的客户端，如 Antigravity）
+
+克隆仓库后直接打开项目根，`.agents/skills/` 会被自动发现，**一集片子只开一个主对话**（下一集新开会话）：
+
+1. **主对话（总控 + Architect）**：直接说「开新片：<选题>」，主对话按 [`produce-episode`](.agents/skills/produce-episode/SKILL.md) 陪你核查一手来源、设计分幕，并将 `facts_and_sources.md`、`beats.json`、`src/manifest.json` 与单期方案 **`src/plan.md`** 落盘到本期目录。
+2. **自动派发 Render 子 Agent**：你在同一窗口回复确认开渲后，主对话自动拉起全新隔离上下文的满血 `self` 子 Agent（按 [`render-episode`](.agents/skills/render-episode/SKILL.md) 执行），完成底座快照、Remotion 视觉/音效/取证代码编写、`preview` 与静图自检，自动回传样片供你审看——全程免手动开第二窗口、免复制粘贴提示词。
+3. **同窗口 `review` 返工与 `ship`**：提修改意见时，主对话登记 `handoff` 并直接发回**同一个待命中的 Render 子 Agent** 定点修复；确认样片后，主对话登记 `review` 并自动通知其运行 `ship`。
+4. **自动拉起只读 Verifier 子 Agent**：`ship` 完成后主对话自动拉起独立只读子 Agent（按 [`verify-episode`](.agents/skills/verify-episode/SKILL.md) 执行 `verify` 与目视复核），全绿后呈交你在同一窗口确认 `delivery`。
+
+#### 方式二：多会话磁盘交接（兼容任意 LLM / CLI / 网页对话）
+
+若使用的工具不支持子 Agent 自动派发，可按职责拆为两个独立会话，通过磁盘上的 **`src/plan.md`** 交接（同样无需粘贴长提示词）：
+
+1. **策划会话（Architect）**：用 [`docs/prompt.md`](docs/prompt.md) 与选题材料启动会话，将 `facts_and_sources.md`、`beats.json`、初始 `src/manifest.json` 和 **`src/plan.md`** 写入本期目录（网页端无磁盘权限时保存输出的方案正文为 `src/plan.md`）。
+2. **渲染会话（Render）**：新开擅长编程的独立会话，仅告知本期目录 `$ep`，让它读取 `src/plan.md` 与 `docs/PRODUCTION.md` 实现并制作 `preview`；`review` 确认后继续执行 `ship`，交付前可另开只读会话运行 `tools/episode.py verify $ep` 复核。
+
+> 公共工具（`tools/`）、制作档案（`tools/profiles/`）与共享底座（`core/vibe/`）的迭代或回归测试，按需另开独立维护会话处理，避免与单期渲染混用上下文。
 
 ### 1. 安装依赖并打开示例
 
@@ -113,6 +128,7 @@ $ep = "output/evergreen_vibe/$(Get-Date -Format yyyy-MM-dd)/02_my_topic"
 | --- | --- |
 | `beats.json` | 按[分幕格式](tools/contracts/beats.schema.json) 编排每幕的起止、阅读窗、上屏文字、音效时间与配乐高潮点。用正式帧率的整数帧对齐边界。 |
 | `facts_and_sources.md` | 记录上屏论断、推导、一手出处和素材授权。 |
+| `src/plan.md` | 可选，由 Architect 落盘的单期视觉世界观、逐幕演法、常量与音色方案，供 Render 直接读盘开工（位于 `src/` 内，不占用交付根目录七件白名单，也不影响内容指纹）。 |
 | `src/entry.tsx` | 实现图形、文字和动效，注册样片与正式片两个 Remotion Composition。两者共用原生画幅，帧率和长度分别对齐档案与分幕。 |
 | `src/manifest.json` | 按[清单格式](tools/contracts/manifest.schema.json)填写入口、两个 Composition ID、样片帧数、制作档案、素材目录、音效和取证入口。示例绑定 [vibe-3.3](tools/profiles/vibe-3.3.json)。 |
 | `src/assets/`、`src/sfx.wav` | 将静态素材和字体放入清单的 `publicDir`，默认是 `src/assets/`。修改分幕的音效节奏后，重新生成与时间轴匹配的微音效 WAV。程序合成可参考[示例初始化脚本](examples/diameter/prepare.py)中的 `render_sfx` 调用。 |
